@@ -42,6 +42,48 @@ import { QRConfig, QRType, DotStyle, CornerStyle, HistoryEntry } from './types';
 import { DEFAULT_CONFIG, QR_TYPES, DOT_STYLES, CORNER_STYLES, SKINS, FONT_OPTIONS } from './constants';
 import { FloatingParticles } from './components/FloatingParticles';
 import { ConicButton, LiquidMetalLogo, TypewriterText, SmoothTabs, InputGroup } from './components/EnhancedUI';
+import { auth, db, storage } from './firebase';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser } from 'firebase/auth';
+import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+// --- Error Handling ---
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function App() {
   const [config, setConfig] = useState<QRConfig>(DEFAULT_CONFIG);
@@ -52,6 +94,9 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
   const qrRef = useRef<HTMLDivElement>(null);
   const qrStyling = useRef<QRCodeStyling | null>(null);
@@ -92,7 +137,43 @@ export default function App() {
       qrRef.current.innerHTML = '';
       qrStyling.current.append(qrRef.current);
     }
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthReady(true);
+      if (u) {
+        // Create/Update user doc
+        const userDoc = doc(db, 'users', u.uid);
+        setDoc(userDoc, {
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          createdAt: serverTimestamp()
+        }, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, `users/${u.uid}`));
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  // --- Sync History from Firestore ---
+  useEffect(() => {
+    if (!user || !isAuthReady) return;
+
+    const q = query(
+      collection(db, 'qrcodes'),
+      where('userId', '==', user.uid),
+      orderBy('timestamp', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as HistoryEntry));
+      setHistory(docs);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'qrcodes'));
+
+    return () => unsubscribe();
+  }, [user, isAuthReady]);
 
   // Sync Dark Mode with HTML element
   useEffect(() => {
@@ -177,6 +258,35 @@ export default function App() {
   }, [config]);
 
   // --- Actions ---
+  const handleFileUpload = async (file: File) => {
+    if (!user) {
+      setToast('Please login to upload files');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setToast('File too large (max 10MB)');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `uploads/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      handleContentChange(url);
+      setToast('File uploaded to Aura Cloud');
+    } catch (err) {
+      console.error(err);
+      setToast('Upload failed');
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -195,23 +305,42 @@ export default function App() {
     await qrStyling.current.update({ width: size, height: size });
     qrStyling.current.download({ name: `lucid-qr-${Date.now()}`, extension: ext });
     
-    // Save to History (always use png for thumbnail)
+    // Save to History
     const blob = await qrStyling.current.getRawData('png') as Blob;
     if (blob) {
       const reader = new FileReader();
       reader.readAsDataURL(blob);
-      reader.onloadend = () => {
-        const entry: HistoryEntry = {
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          contentType: config.type,
-          value: config.content,
-          thumbnail: reader.result as string,
-          config: { ...config }
-        };
-        const newHistory = [entry, ...history].slice(0, 10);
-        setHistory(newHistory);
-        localStorage.setItem('lucidqr_history', JSON.stringify(newHistory));
+      reader.onloadend = async () => {
+        const thumbnail = reader.result as string;
+        
+        if (user) {
+          // Save to Firestore
+          try {
+            await addDoc(collection(db, 'qrcodes'), {
+              userId: user.uid,
+              timestamp: Date.now(),
+              contentType: config.type,
+              value: config.content,
+              thumbnail,
+              config: JSON.parse(JSON.stringify(config)) // Deep copy to avoid proxy issues
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, 'qrcodes');
+          }
+        } else {
+          // Fallback to local
+          const entry: HistoryEntry = {
+            id: Date.now().toString(),
+            timestamp: Date.now(),
+            contentType: config.type,
+            value: config.content,
+            thumbnail,
+            config: { ...config }
+          };
+          const newHistory = [entry, ...history].slice(0, 10);
+          setHistory(newHistory);
+          localStorage.setItem('lucidqr_history', JSON.stringify(newHistory));
+        }
       };
     }
 
@@ -252,9 +381,21 @@ export default function App() {
       return next;
     });
   };
-  const clearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem('lucidqr_history');
+  const clearHistory = async () => {
+    if (user) {
+      try {
+        const q = query(collection(db, 'qrcodes'), where('userId', '==', user.uid));
+        const snapshot = await getDocs(q);
+        const batch: Promise<any>[] = [];
+        snapshot.docs.forEach(d => batch.push(deleteDoc(doc(db, 'qrcodes', d.id))));
+        await Promise.all(batch);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, 'qrcodes');
+      }
+    } else {
+      setHistory([]);
+      localStorage.removeItem('lucidqr_history');
+    }
   };
 
   // --- Render Helpers ---
@@ -281,16 +422,42 @@ export default function App() {
             </span>
           </div>
         </div>
-        <button 
-          onClick={() => {
-            const next = !isDarkMode;
-            setIsDarkMode(next);
-            localStorage.setItem('lucidqr_theme', next ? 'dark' : 'light');
-          }}
-          className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors dark:text-white"
-        >
-          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => {
+              const next = !isDarkMode;
+              setIsDarkMode(next);
+              localStorage.setItem('lucidqr_theme', next ? 'dark' : 'light');
+            }}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors dark:text-white"
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
+
+          {!isAuthReady ? (
+            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-zinc-900 animate-pulse" />
+          ) : user ? (
+            <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-zinc-800">
+              <div className="flex flex-col items-end hidden sm:flex">
+                <span className="text-[10px] font-bold text-slate-900 dark:text-white leading-none">{user.displayName}</span>
+                <button 
+                  onClick={() => signOut(auth)}
+                  className="text-[9px] font-black text-primary uppercase tracking-widest mt-1 hover:opacity-70 transition-opacity"
+                >
+                  Logout
+                </button>
+              </div>
+              <img src={user.photoURL || ''} alt="avatar" className="w-10 h-10 rounded-full border border-slate-200 dark:border-zinc-800" referrerPolicy="no-referrer" />
+            </div>
+          ) : (
+            <button 
+              onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
+              className="h-10 px-6 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
+            >
+              Sign In
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
@@ -781,25 +948,30 @@ export default function App() {
                           <div className="flex flex-col gap-3 py-2">
                             <div 
                               onClick={() => {
+                                if (!user) {
+                                  signInWithPopup(auth, new GoogleAuthProvider());
+                                  return;
+                                }
                                 const input = document.createElement('input');
                                 input.type = 'file';
                                 input.accept = config.type === 'image' ? 'image/*' : '*/*';
                                 input.onchange = (e) => {
                                   const file = (e.target as HTMLInputElement).files?.[0];
-                                  if (file) {
-                                    handleContentChange(`https://aura.cloud/sh/${Math.random().toString(36).substring(7)}/${file.name}`);
-                                    setToast(`${file.name} uploaded successfully`);
-                                  }
+                                  if (file) handleFileUpload(file);
                                 };
                                 input.click();
                               }}
                               className="border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all group"
                             >
                               <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-zinc-900 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Upload size={24} className="text-slate-400 dark:text-zinc-500 group-hover:text-primary" />
+                                {isUploading ? (
+                                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Upload size={24} className="text-slate-400 dark:text-zinc-500 group-hover:text-primary" />
+                                )}
                               </div>
                               <div className="text-center">
-                                <p className="text-sm font-bold dark:text-white">Click to upload</p>
+                                <p className="text-sm font-bold dark:text-white">{isUploading ? "Uploading..." : "Click to upload"}</p>
                                 <p className="text-[10px] text-slate-400 mt-1">Maximum file size: 10MB</p>
                               </div>
                             </div>

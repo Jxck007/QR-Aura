@@ -52,7 +52,7 @@ export const ConicButton: React.FC<ConicButtonProps> = ({
 export const LiquidMetalLogo: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => {
   return (
     <div className={cn("relative inline-block group cursor-pointer", className)}>
-      <span className="relative z-10 bg-gradient-to-r from-slate-900 via-slate-400 to-slate-900 dark:from-white dark:via-slate-300 dark:to-white bg-[length:200%_auto] bg-clip-text text-transparent animate-shine">
+      <span className="relative z-10 bg-gradient-to-r from-black via-zinc-400 to-black dark:from-white dark:via-zinc-300 dark:to-white bg-[length:200%_auto] bg-clip-text text-transparent animate-shine">
         {children}
       </span>
       <style>{`
