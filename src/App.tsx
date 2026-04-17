@@ -97,6 +97,7 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [qrInstance, setQrInstance] = useState<QRCodeStyling | null>(null);
   
   const qrRef = useRef<HTMLDivElement>(null);
   const qrStyling = useRef<QRCodeStyling | null>(null);
@@ -124,7 +125,7 @@ export default function App() {
       return prev;
     });
 
-    qrStyling.current = new QRCodeStyling({
+    const instance = new QRCodeStyling({
       width: 320,
       height: 320,
       data: config.content,
@@ -133,10 +134,8 @@ export default function App() {
       imageOptions: { crossOrigin: 'anonymous', margin: 10 }
     });
 
-    if (qrRef.current) {
-      qrRef.current.innerHTML = '';
-      qrStyling.current.append(qrRef.current);
-    }
+    qrStyling.current = instance;
+    setQrInstance(instance);
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -204,9 +203,17 @@ export default function App() {
     }
   };
 
+  // --- Append QR ---
+  useEffect(() => {
+    if (qrRef.current && qrInstance) {
+      qrRef.current.innerHTML = '';
+      qrInstance.append(qrRef.current);
+    }
+  }, [qrInstance]);
+
   // --- Update QR ---
   useEffect(() => {
-    if (!qrStyling.current) return;
+    if (!qrInstance) return;
     
     setIsRegenerating(true);
     const timer = setTimeout(() => {
@@ -228,7 +235,7 @@ export default function App() {
         dotsOptions.gradient = null;
       }
 
-      qrStyling.current?.update({
+      qrInstance.update({
         data: config.content,
         dotsOptions,
         backgroundOptions: { 
@@ -249,13 +256,14 @@ export default function App() {
           hideBackgroundDots: config.logo?.hideBackgroundDots,
           imageSize: (config.logo?.size || 30) / 100,
           margin: config.logo?.margin || 0,
+          crossOrigin: 'anonymous'
         }
       });
       setIsRegenerating(false);
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [config]);
+  }, [config, qrInstance]);
 
   // --- Actions ---
   const handleFileUpload = async (file: File) => {
