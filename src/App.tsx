@@ -65,6 +65,20 @@ export default function App() {
     const savedTheme = localStorage.getItem('lucidqr_theme');
     if (savedTheme === 'dark') setIsDarkMode(true);
 
+    // Migration: If the default color is still the old blue, reset it to white for Aura theme
+    setConfig(prev => {
+      if (prev.dots.color === '#061fd0') {
+        return {
+          ...prev,
+          dots: { ...prev.dots, color: '#ffffff' },
+          corners: { ...prev.corners, color: '#ffffff' },
+          frame: { ...prev.frame, color: '#ffffff' },
+          background: { ...prev.background, transparent: true }
+        };
+      }
+      return prev;
+    });
+
     qrStyling.current = new QRCodeStyling({
       width: 320,
       height: 320,
@@ -251,12 +265,12 @@ export default function App() {
   );
 
   return (
-    <div className={cn("flex flex-col h-screen overflow-hidden transition-colors duration-300", isDarkMode ? "dark bg-slate-950" : "bg-white")}>
+    <div className={cn("flex flex-col h-screen overflow-hidden transition-colors duration-300", isDarkMode ? "dark bg-black" : "bg-white")}>
       {/* Header */}
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0 bg-white dark:bg-slate-900 z-50">
+      <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0 bg-white dark:bg-black z-50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-            <QrCode className="text-white w-6 h-6" />
+          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-slate-800">
+            <img src="/logo.png" alt="QR Aura" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div className="flex flex-col">
             <LiquidMetalLogo className="text-xl font-black tracking-tighter leading-none">
@@ -307,8 +321,8 @@ export default function App() {
                 className={cn(
                   "relative transition-all duration-300 flex flex-col items-center justify-center",
                   config.frame.style === 'border' && "border-2 border-primary p-4 rounded-2xl",
-                  config.frame.style === 'card' && "bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800",
-                  config.frame.style === 'badge' && "bg-slate-900 dark:bg-white p-3 rounded-[40px] shadow-xl"
+                  config.frame.style === 'card' && "bg-white dark:bg-black p-6 rounded-3xl shadow-2xl border border-slate-100 dark:border-zinc-800",
+                  config.frame.style === 'badge' && "bg-black dark:bg-white p-3 rounded-[40px] shadow-xl"
                 )}
               >
                 <div className={cn(
@@ -468,9 +482,9 @@ export default function App() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-100 dark:bg-slate-800 animate-pulse flex items-center justify-center z-10"
+                        className="absolute inset-0 bg-slate-100 dark:bg-zinc-900 animate-pulse flex items-center justify-center z-10"
                       >
-                        <QrCode className="text-slate-300 dark:text-slate-700 w-20 h-20" />
+                        <QrCode className="text-slate-300 dark:text-zinc-700 w-20 h-20" />
                       </motion.div>
                     )}
                     {!config.content && !isRegenerating && (
@@ -518,20 +532,20 @@ export default function App() {
                   </ConicButton>
                   
                   {/* Dropdown menu */}
-                  <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl py-2 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all z-[60] overflow-hidden translate-y-2 group-hover/export:translate-y-0">
+                  <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-black border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl py-2 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all z-[60] overflow-hidden translate-y-2 group-hover/export:translate-y-0">
                     <button 
                       onClick={() => handleExport('png')}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-white flex items-center justify-between transition-colors"
+                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
                     >
                       <div className="flex flex-col">
                         <span>PNG (Standard)</span>
                         <span className="text-[10px] opacity-50 uppercase tracking-tighter">Solid Background</span>
                       </div>
-                      <span className="text-[10px] opacity-70 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md">{config.size}px</span>
+                      <span className="text-[10px] opacity-70 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded-md">{config.size}px</span>
                     </button>
                     <button 
                       onClick={() => handleExport('png', 1024)}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-white flex items-center justify-between transition-colors"
+                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
                     >
                       <div className="flex flex-col">
                         <span>PNG (HD)</span>
@@ -539,10 +553,10 @@ export default function App() {
                       </div>
                       <span className="text-[10px] opacity-70 bg-primary/10 text-primary px-2 py-1 rounded-md">1024px</span>
                     </button>
-                    <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-4" />
+                    <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1 mx-4" />
                     <button 
                       onClick={() => handleExport('svg')}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-white flex items-center justify-between transition-colors"
+                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
                     >
                       <div className="flex flex-col">
                         <span>SVG (Vector)</span>
@@ -570,7 +584,7 @@ export default function App() {
         </main>
 
         {/* Config Sidebar */}
-        <aside className="w-full md:w-[400px] bg-white dark:bg-slate-900 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
+        <aside className="w-full md:w-[400px] bg-white dark:bg-black border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
           {/* Main Tab Area */}
           <div className="p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <SmoothTabs 
@@ -781,8 +795,8 @@ export default function App() {
                               }}
                               className="border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all group"
                             >
-                              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <Upload size={24} className="text-slate-400 dark:text-slate-500 group-hover:text-primary" />
+                              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-zinc-900 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Upload size={24} className="text-slate-400 dark:text-zinc-500 group-hover:text-primary" />
                               </div>
                               <div className="text-center">
                                 <p className="text-sm font-bold dark:text-white">Click to upload</p>
@@ -792,15 +806,15 @@ export default function App() {
                             
                             <div className="relative">
                               <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-slate-100 dark:border-slate-800" />
+                                <span className="w-full border-t border-slate-100 dark:border-zinc-800" />
                               </div>
                               <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400">
-                                <span className="bg-white dark:bg-slate-900 px-2 tracking-widest">Or enter link</span>
+                                <span className="bg-white dark:bg-black px-2 tracking-widest">Or enter link</span>
                               </div>
                             </div>
                             
                             <input 
-                              className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl px-4 text-sm outline-none dark:text-white"
+                              className="w-full h-11 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl px-4 text-sm outline-none dark:text-white"
                               placeholder={config.type === 'image' ? "https://example.com/image.png" : "https://example.com/file.pdf"}
                               value={config.content}
                               onChange={(e) => handleContentChange(e.target.value)}
@@ -1046,11 +1060,11 @@ export default function App() {
                       <input type="range" min="10" max="50" value={config.logo?.size || 30} onChange={(e) => updateConfig({ logo: { ...config.logo!, size: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
                     </InputGroup>
 
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800">
                       <span className="text-[11px] font-bold dark:text-white">Clear behind logo</span>
                       <button 
                         onClick={() => updateConfig({ logo: { ...config.logo!, hideBackgroundDots: !config.logo?.hideBackgroundDots } })}
-                        className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-primary" : "bg-slate-200 dark:bg-slate-700")}
+                        className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-primary" : "bg-slate-200 dark:bg-zinc-800")}
                       >
                         <div className={cn("absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-all", config.logo?.hideBackgroundDots ? "translate-x-5" : "translate-x-0")} />
                       </button>

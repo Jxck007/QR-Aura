@@ -39,7 +39,7 @@ export const ConicButton: React.FC<ConicButtonProps> = ({
       />
       
       {/* Inner Surface - High visibility surface */}
-      <div className="absolute inset-[2px] z-10 bg-white dark:bg-slate-800 rounded-[inherit] transition-colors group-hover:bg-slate-50 dark:group-hover:bg-slate-700" />
+      <div className="absolute inset-[2px] z-10 bg-white dark:bg-black rounded-[inherit] transition-colors group-hover:bg-slate-50 dark:group-hover:bg-slate-900" />
       
       {/* Content */}
       <div className="relative z-20 w-full h-full flex items-center justify-center pointer-events-none px-6">
@@ -110,7 +110,7 @@ export const SmoothTabs: React.FC<{
   className?: string;
 }> = ({ tabs, activeTab, onChange, className }) => {
   return (
-    <div className={cn("flex px-2 py-1 bg-slate-100/50 dark:bg-slate-800/50 backdrop-blur-md rounded-xl relative", className)}>
+    <div className={cn("flex px-2 py-1 bg-slate-100/50 dark:bg-black/80 backdrop-blur-md rounded-xl relative", className)}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const Icon = tab.icon;
@@ -146,7 +146,7 @@ export const InputGroup: React.FC<{
   className?: string;
 }> = ({ label, children, className }) => {
   return (
-    <div className={cn("flex flex-col gap-1.5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-primary/20 hover:shadow-md", className)}>
+    <div className={cn("flex flex-col gap-1.5 p-3 rounded-2xl bg-white dark:bg-black border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-primary/20 hover:shadow-md", className)}>
       <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500 ml-1">
         {label}
       </label>

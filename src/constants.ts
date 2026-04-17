@@ -24,37 +24,37 @@ export const DEFAULT_CONFIG: QRConfig = {
   type: 'url',
   dots: {
     type: 'rounded',
-    color: '#061fd0',
+    color: '#ffffff',
     gradient: {
       enabled: false,
       type: 'linear',
-      color1: '#061fd0',
+      color1: '#ffffff',
       color2: '#477f88',
       rotation: 0,
     }
   },
   background: {
     color: '#ffffff',
-    transparent: false,
+    transparent: true,
   },
   corners: {
     type: 'rounded',
-    color: '#061fd0',
+    color: '#ffffff',
   },
   frame: {
     style: 'none',
     text: 'SCAN ME',
     fontSize: 14,
-    color: '#061fd0',
+    color: '#ffffff',
     fontFamily: 'Inter',
   },
   size: 512,
   margin: 10,
   errorCorrectionLevel: 'H',
-  skin: 'none',
+  skin: 'midnight',
   logo: {
-    src: '',
-    size: 30,
+    src: '/logo.png',
+    size: 25,
     margin: 10,
     hideBackgroundDots: true,
   }
@@ -82,7 +82,7 @@ export const SKINS = [
   { id: 'wave', label: 'Ocean Wave', icon: 'Waves', color: '#00c6ff' },
   { id: 'aurora', label: 'Aurora Glow', icon: 'Sparkles', color: '#00ffcc' },
   { id: 'cyberpunk', label: 'Cyberpunk', icon: 'Zap', color: '#f0f' },
-  { id: 'midnight', label: 'Midnight Space', icon: 'Moon', color: '#0a0a0a' },
+  { id: 'midnight', label: 'Midnight Space', icon: 'Moon', color: '#000000' },
   { id: 'sunset', label: 'Golden Sunset', icon: 'Sun', color: '#ff7e5f' },
   { id: 'forest', label: 'Emerald Forest', icon: 'Trees', color: '#2d5a27' },
 ];
