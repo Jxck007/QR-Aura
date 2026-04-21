@@ -47,6 +47,47 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-black flex items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full space-y-4">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+              <Info className="text-red-500" size={32} />
+            </div>
+            <h1 className="text-xl font-bold text-white uppercase tracking-tight">App Interface Error</h1>
+            <p className="text-slate-400 text-sm">
+              {this.state.error?.message || "An unexpected error occurred."}
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase"
+            >
+              Reload App
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // --- Error Handling ---
 enum OperationType {
   CREATE = 'create',
@@ -85,7 +126,15 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-export default function App() {
+export default function AppWrapper() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [config, setConfig] = useState<QRConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<'content' | 'design' | 'colors' | 'logo' | 'label' | 'skins'>('content');
   const [isExporting, setIsExporting] = useState(false);
@@ -99,7 +148,14 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [qrInstance, setQrInstance] = useState<QRCodeStyling | null>(null);
   
-  const qrRef = useRef<HTMLDivElement>(null);
+  const qrContainerRef = useCallback((node: HTMLDivElement | null) => {
+    if (node !== null && qrInstance) {
+      console.log("Appending QR instance to node");
+      node.innerHTML = '';
+      qrInstance.append(node);
+    }
+  }, [qrInstance]);
+
   const qrStyling = useRef<QRCodeStyling | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,17 +181,19 @@ export default function App() {
       return prev;
     });
 
-    const instance = new QRCodeStyling({
-      width: 320,
-      height: 320,
-      data: config.content,
-      margin: config.margin,
-      qrOptions: { typeNumber: 0, mode: 'Byte', errorCorrectionLevel: config.errorCorrectionLevel },
-      imageOptions: { crossOrigin: 'anonymous', margin: 10 }
-    });
+      // Initial Engine Setup with 404 Resilience
+      const instance = new QRCodeStyling({
+        width: 320,
+        height: 320,
+        data: config.content,
+        margin: config.margin,
+        qrOptions: { typeNumber: 0, mode: 'Byte', errorCorrectionLevel: config.errorCorrectionLevel },
+        imageOptions: { crossOrigin: 'anonymous', margin: 10 }
+      });
 
-    qrStyling.current = instance;
-    setQrInstance(instance);
+      console.log("QR Engine Initialized: Setting instance...");
+      qrStyling.current = instance;
+      setQrInstance(instance);
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -203,63 +261,62 @@ export default function App() {
     }
   };
 
-  // --- Append QR ---
-  useEffect(() => {
-    if (qrRef.current && qrInstance) {
-      qrRef.current.innerHTML = '';
-      qrInstance.append(qrRef.current);
-    }
-  }, [qrInstance]);
-
   // --- Update QR ---
   useEffect(() => {
     if (!qrInstance) return;
     
     setIsRegenerating(true);
     const timer = setTimeout(() => {
-      const dotsOptions: any = {
-        color: config.dots.color,
-        type: config.dots.type as any,
-      };
-
-      if (config.dots.gradient?.enabled) {
-        dotsOptions.gradient = {
-          type: config.dots.gradient.type,
-          rotation: (config.dots.gradient.rotation * Math.PI) / 180,
-          colorStops: [
-            { offset: 0, color: config.dots.gradient.color1 },
-            { offset: 1, color: config.dots.gradient.color2 }
-          ]
+      try {
+        const dotsOptions: any = {
+          color: config.dots.color,
+          type: config.dots.type as any,
         };
-      } else {
-        dotsOptions.gradient = null;
-      }
 
-      qrInstance.update({
-        data: config.content,
-        dotsOptions,
-        backgroundOptions: { 
-          color: (config.skin && config.skin !== 'none') ? 'transparent' : (config.background.transparent ? 'transparent' : config.background.color) 
-        },
-        cornersSquareOptions: { 
-          type: config.corners.type as any, 
-          color: config.corners.color,
-          gradient: dotsOptions.gradient 
-        },
-        cornersDotOptions: { 
-          type: config.corners.type as any, 
-          color: config.corners.color,
-          gradient: dotsOptions.gradient 
-        },
-        image: config.logo?.src,
-        imageOptions: {
-          hideBackgroundDots: config.logo?.hideBackgroundDots,
-          imageSize: (config.logo?.size || 30) / 100,
-          margin: config.logo?.margin || 0,
-          crossOrigin: 'anonymous'
+        if (config.dots.gradient?.enabled) {
+          dotsOptions.gradient = {
+            type: config.dots.gradient.type,
+            rotation: (config.dots.gradient.rotation * Math.PI) / 180,
+            colorStops: [
+              { offset: 0, color: config.dots.gradient.color1 },
+              { offset: 1, color: config.dots.gradient.color2 }
+            ]
+          };
+        } else {
+          dotsOptions.gradient = null;
         }
-      });
-      setIsRegenerating(false);
+
+        qrInstance.update({
+          data: config.content || 'https://lucidqr.com',
+          dotsOptions,
+          backgroundOptions: { 
+            color: (config.skin && config.skin !== 'none') ? 'transparent' : (config.background.transparent ? 'transparent' : config.background.color) 
+          },
+          cornersSquareOptions: { 
+            type: config.corners.type as any, 
+            color: config.corners.color,
+            gradient: dotsOptions.gradient 
+          },
+          cornersDotOptions: { 
+            type: config.corners.type as any, 
+            color: config.corners.color,
+            gradient: dotsOptions.gradient 
+          },
+          image: (config.logo?.src === '/logo.png') ? undefined : config.logo?.src,
+          imageOptions: {
+            hideBackgroundDots: config.logo?.hideBackgroundDots,
+            imageSize: (config.logo?.size || 30) / 100,
+            margin: config.logo?.margin || 0,
+            crossOrigin: 'anonymous'
+          }
+        });
+        console.log("QR Engine Updated Successfully");
+      } catch (err) {
+        console.error("QR Styling Update Failed", err);
+      } finally {
+        setIsRegenerating(false);
+        console.log("Regeneration state finished");
+      }
     }, 150);
 
     return () => clearTimeout(timer);
@@ -643,10 +700,10 @@ export default function App() {
                   )}
                   {/* QR Core Container - Stays mounted to preserve instance reference */}
                   <div 
-                    ref={qrRef} 
+                    ref={qrContainerRef} 
                     className={cn(
                       "w-full h-full flex items-center justify-center transition-opacity duration-200 relative z-20",
-                      (isRegenerating || !config.content) ? "opacity-0" : "opacity-100"
+                      (isRegenerating || !config.content) ? "opacity-30 blur-sm" : "opacity-100" // Reduced hiding during regen to prove it's there
                     )} 
                   />
 
@@ -1119,7 +1176,7 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <input 
                           type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 dark:text-white focus:ring-0 outline-none"
+                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-slate-900 dark:text-white focus:ring-0 outline-none"
                           value={config.dots.color}
                           onChange={(e) => updateConfig({ 
                             dots: { ...config.dots, color: e.target.value },
@@ -1146,7 +1203,7 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <input 
                           type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 dark:text-white focus:ring-0 outline-none"
+                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-slate-900 dark:text-white focus:ring-0 outline-none"
                           value={config.background.color}
                           onChange={(e) => updateConfig({ background: { ...config.background, color: e.target.value } })}
                         />
@@ -1210,7 +1267,7 @@ export default function App() {
                       <div className="flex flex-col gap-2">
                         <div className="group relative">
                           <input 
-                            className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white"
                             placeholder="https://..."
                             value={config.logo?.src || ''}
                             onChange={(e) => updateConfig({ logo: { ...config.logo!, src: e.target.value } })}
@@ -1259,7 +1316,7 @@ export default function App() {
                   <div className="space-y-4">
                     <InputGroup label="Tagline Text">
                       <input 
-                        className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                        className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white"
                         placeholder="SCAN ME"
                         value={config.frame.text}
                         onChange={(e) => updateConfig({ frame: { ...config.frame, text: e.target.value } })}
@@ -1269,7 +1326,7 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-3">
                       <InputGroup label="Text Font">
                         <select 
-                          className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none dark:text-white cursor-pointer"
+                          className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white cursor-pointer"
                           value={config.frame.fontFamily}
                           onChange={(e) => updateConfig({ frame: { ...config.frame, fontFamily: e.target.value } })}
                         >
@@ -1283,7 +1340,7 @@ export default function App() {
                         <div className="flex items-center gap-2 h-9 px-1">
                           <input 
                             type="text" 
-                            className="flex-1 bg-transparent border-none text-[10px] font-mono dark:text-white focus:ring-0 outline-none"
+                            className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
                             value={config.frame.color}
                             onChange={(e) => updateConfig({ frame: { ...config.frame, color: e.target.value } })}
                           />
