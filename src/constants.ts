@@ -6,56 +6,63 @@
 import { QRConfig } from './types';
 
 export const COLORS = {
-  primary: '#477f88', // Deep Teal
-  secondary: '#667b7e', // Mid-Greyish Teal
-  background: '#757778', // Base Background
-  surface: '#f9f9fb',
-  surfaceContainerLow: '#f3f3f5',
+  primary: '#00ffcc', // Vibrant Cyan/Aura
+  secondary: '#477f88', // Deep Teal
+  background: '#020617', // Slate 950 (Premium Dark)
+  surface: '#ffffff',
+  surfaceContainerLow: '#f1f5f9',
   surfaceContainerLowest: '#ffffff',
-  onSurface: '#202222',
-  onSurfaceVariant: '#8e9090',
-  outlineVariant: '#a0a2a2',
-  error: '#ba1a1a',
-  tertiary: '#673d1b', // For "Pro" features
+  onSurface: '#0f172a',
+  onSurfaceVariant: '#64748b',
+  outlineVariant: '#cbd5e1',
+  error: '#ef4444',
+  tertiary: '#f59e0b', // Gold for "Pro" feel
 };
 
 export const DEFAULT_CONFIG: QRConfig = {
-  content: 'https://lucidqr.com',
+  content: 'https://qraura.io',
   type: 'url',
   dots: {
-    type: 'rounded',
-    color: '#ffffff',
+    type: 'square',
+    color: '#000000',
     gradient: {
       enabled: false,
       type: 'linear',
-      color1: '#ffffff',
-      color2: '#477f88',
+      color1: '#000000',
+      color2: '#00ffcc',
       rotation: 0,
     }
   },
   background: {
     color: '#ffffff',
-    transparent: true,
+    transparent: false,
   },
   corners: {
-    type: 'rounded',
-    color: '#ffffff',
+    type: 'square',
+    color: '#000000',
   },
   frame: {
-    style: 'none',
+    style: 'card', 
     text: 'SCAN ME',
     fontSize: 14,
-    color: '#ffffff',
-    fontFamily: 'Inter',
+    color: '#000000',
+    fontFamily: 'Space Grotesk',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderWidth: 1,
+    borderRadius: 40,
+    shadowColor: '#00000033',
+    shadowIntensity: 0.5,
+    padding: 32,
   },
   size: 512,
   margin: 10,
   errorCorrectionLevel: 'H',
-  skin: 'midnight',
+  skin: 'none', 
   logo: {
-    src: '/logo.png',
+    src: '',
     size: 25,
-    margin: 10,
+    margin: 5,
     hideBackgroundDots: true,
   }
 };

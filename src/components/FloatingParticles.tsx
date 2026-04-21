@@ -13,13 +13,13 @@ interface Particle {
 export const FloatingParticles: React.FC = () => {
   const particles = useMemo(() => {
     const p: Particle[] = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 30; i++) {
       p.push({
         id: i,
         x: Math.random() * 100,
         y: Math.random() * 100,
-        size: Math.random() * 6 + 2,
-        duration: Math.random() * 15 + 15,
+        size: Math.random() * 4 + 1,
+        duration: Math.random() * 20 + 20,
         delay: Math.random() * 10
       });
     }
@@ -28,12 +28,14 @@ export const FloatingParticles: React.FC = () => {
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-slate-900/10 to-transparent dark:via-black/20 dark:to-transparent opacity-50" />
+      {/* Background layer */}
+      <div className="absolute inset-0 bg-transparent" />
       
+      {/* Particles */}
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-slate-400/20 dark:bg-white/10 blur-[1px]"
+          className="absolute rounded-full bg-primary/30 dark:bg-accent/20 blur-[1px]"
           style={{
             left: `${p.x}%`,
             top: `${p.y}%`,
@@ -41,46 +43,46 @@ export const FloatingParticles: React.FC = () => {
             height: p.size,
           }}
           animate={{
-            y: [0, -60, 0],
-            x: [0, 30, 0],
-            opacity: [0.1, 0.4, 0.1],
-            scale: [1, 1.3, 1],
+            y: [0, -100, 0],
+            x: [0, 50, 0],
+            opacity: [0.1, 0.5, 0.1],
+            scale: [1, 1.5, 1],
           }}
           transition={{
             duration: p.duration,
             delay: p.delay,
             repeat: Infinity,
-            ease: "easeInOut",
+            ease: "linear",
           }}
         />
       ))}
       
-      {/* Dynamic Orbs - Neutral/White/Dim */}
+      {/* Aura Orbs */}
       <motion.div 
-        className="absolute -top-20 -left-20 w-[500px] h-[500px] bg-slate-800/10 dark:bg-slate-900/10 blur-[120px] rounded-full"
+        className="absolute -top-[10%] -left-[10%] w-[60%] h-[60%] bg-aura/10 dark:bg-aura/15 blur-[120px] rounded-full"
         animate={{
-          x: [0, 100, 0],
-          y: [0, 60, 0],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 20,
-          repeat: Infinity,
-          ease: "linear"
-        }}
-      />
-      <motion.div 
-        className="absolute -bottom-20 -right-20 w-[600px] h-[600px] bg-slate-800/10 dark:bg-slate-900/10 blur-[150px] rounded-full"
-        animate={{
-          x: [0, -80, 0],
-          y: [0, -100, 0],
+          x: [0, 50, 0],
+          y: [0, 30, 0],
           scale: [1, 1.2, 1],
         }}
-        transition={{
-          duration: 25,
-          repeat: Infinity,
-          ease: "linear"
+        transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+      />
+      <motion.div 
+        className="absolute -bottom-[10%] -right-[10%] w-[70%] h-[70%] bg-accent/5 dark:bg-accent/10 blur-[150px] rounded-full"
+        animate={{
+          x: [0, -40, 0],
+          y: [0, -60, 0],
+          scale: [1, 1.3, 1],
         }}
+        transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+      />
+      <motion.div 
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-primary/5 dark:bg-primary/10 blur-[180px] rounded-full"
+        animate={{
+          scale: [1, 1.5, 1],
+          opacity: [0.3, 0.6, 0.3]
+        }}
+        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
       />
     </div>
   );

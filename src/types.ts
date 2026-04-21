@@ -61,6 +61,13 @@ export interface QRConfig {
     fontSize: number;
     color: string;
     fontFamily: string;
+    backgroundColor: string;
+    borderColor: string;
+    borderWidth: number;
+    borderRadius: number;
+    shadowColor: string;
+    shadowIntensity: number;
+    padding: number;
   };
   size: number;
   margin: number;

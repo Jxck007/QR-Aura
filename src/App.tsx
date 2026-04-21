@@ -28,6 +28,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Layout,
   Info,
   Zap,
   Trees,
@@ -37,6 +38,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCodeStyling from 'qr-code-styling';
+import html2canvas from 'html2canvas';
 import { cn } from './lib/utils';
 import { QRConfig, QRType, DotStyle, CornerStyle, HistoryEntry } from './types';
 import { DEFAULT_CONFIG, QR_TYPES, DOT_STYLES, CORNER_STYLES, SKINS, FONT_OPTIONS } from './constants';
@@ -46,47 +48,6 @@ import { auth, db, storage } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser } from 'firebase/auth';
 import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
-// --- Error Boundary ---
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("ErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-6 text-center">
-          <div className="max-w-md w-full space-y-4">
-            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
-              <Info className="text-red-500" size={32} />
-            </div>
-            <h1 className="text-xl font-bold text-white uppercase tracking-tight">App Interface Error</h1>
-            <p className="text-slate-400 text-sm">
-              {this.state.error?.message || "An unexpected error occurred."}
-            </p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase"
-            >
-              Reload App
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 // --- Error Handling ---
 enum OperationType {
@@ -126,15 +87,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-export default function AppWrapper() {
-  return (
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  );
-}
-
-function App() {
+export default function App() {
   const [config, setConfig] = useState<QRConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<'content' | 'design' | 'colors' | 'logo' | 'label' | 'skins'>('content');
   const [isExporting, setIsExporting] = useState(false);
@@ -147,6 +100,7 @@ function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [qrInstance, setQrInstance] = useState<QRCodeStyling | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   
   const qrContainerRef = useCallback((node: HTMLDivElement | null) => {
     if (node !== null && qrInstance) {
@@ -364,63 +318,152 @@ function App() {
   };
 
   const handleExport = async (ext: 'png' | 'svg', customSize?: number) => {
-    if (!qrStyling.current) return;
+    if (!previewRef.current) return;
     
-    const size = customSize || config.size;
-    await qrStyling.current.update({ width: size, height: size });
-    qrStyling.current.download({ name: `lucid-qr-${Date.now()}`, extension: ext });
-    
-    // Save to History
-    const blob = await qrStyling.current.getRawData('png') as Blob;
-    if (blob) {
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onloadend = async () => {
-        const thumbnail = reader.result as string;
-        
-        if (user) {
-          // Save to Firestore
-          try {
-            await addDoc(collection(db, 'qrcodes'), {
-              userId: user.uid,
-              timestamp: Date.now(),
-              contentType: config.type,
-              value: config.content,
-              thumbnail,
-              config: JSON.parse(JSON.stringify(config)) // Deep copy to avoid proxy issues
-            });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.CREATE, 'qrcodes');
-          }
-        } else {
-          // Fallback to local
-          const entry: HistoryEntry = {
-            id: Date.now().toString(),
-            timestamp: Date.now(),
-            contentType: config.type,
-            value: config.content,
-            thumbnail,
-            config: { ...config }
-          };
-          const newHistory = [entry, ...history].slice(0, 10);
-          setHistory(newHistory);
-          localStorage.setItem('lucidqr_history', JSON.stringify(newHistory));
-        }
-      };
-    }
+    setIsExporting(true);
+    setToast('Generating high-res export...');
 
-    // Reset preview size
-    setTimeout(() => qrStyling.current?.update({ width: 320, height: 320 }), 500);
+    try {
+      if (ext === 'svg' && qrStyling.current) {
+        // SVG export still uses the engine because html2canvas produces raster
+        const size = customSize || config.size;
+        await qrStyling.current.update({ width: size, height: size });
+        qrStyling.current.download({ name: `lucid-qr-${Date.now()}`, extension: 'svg' });
+      } else {
+        // PNG export captures the ENTIRE style using html2canvas
+        const canvas = await html2canvas(previewRef.current, {
+          scale: 4, // High resolution
+          useCORS: true,
+          backgroundColor: null,
+          logging: false,
+          onclone: (clonedDoc) => {
+            const elements = clonedDoc.getElementsByTagName('*');
+            for (let i = 0; i < elements.length; i++) {
+              const el = elements[i] as HTMLElement;
+              const style = window.getComputedStyle(el);
+              const isUnsupported = (val: string) => val.includes('oklch') || val.includes('oklab');
+              
+              if (isUnsupported(style.boxShadow || '')) el.style.boxShadow = 'none';
+              
+              if (isUnsupported(style.color || '')) {
+                el.style.color = '#ffffff';
+              }
+
+              // CRITICAL: Force background capture for skins
+              if (el.style.background || el.style.backgroundImage) {
+                // Keep the inline styles we set in React (they use hex)
+              } else if (isUnsupported(style.backgroundColor || '')) {
+                const classList = el.className;
+                if (classList.includes('bg-white')) el.style.backgroundColor = '#ffffff';
+                else if (classList.includes('bg-black')) el.style.backgroundColor = '#000000';
+                else if (classList.includes('bg-primary')) el.style.backgroundColor = '#00ffcc';
+                else el.style.backgroundColor = 'transparent';
+              }
+
+              if (isUnsupported(style.borderColor || '')) {
+                if (el.className.includes('border-primary')) el.style.borderColor = '#00ffcc';
+                else el.style.borderColor = 'transparent';
+              }
+              
+              // Remove any oklch from pseudo elements if possible (though html2canvas usually ignores them)
+            }
+          }
+        });
+
+        const link = document.createElement('a');
+        link.download = `aura-qr-${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }
+
+      // Save to History (using the engine for the thumbnail to keep it small)
+      if (qrStyling.current) {
+        const blob = await qrStyling.current.getRawData('png') as Blob;
+        if (blob) {
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = async () => {
+            const thumbnail = reader.result as string;
+            if (user) {
+              await addDoc(collection(db, 'qrcodes'), {
+                userId: user.uid,
+                timestamp: Date.now(),
+                contentType: config.type,
+                value: config.content,
+                thumbnail,
+                config: JSON.parse(JSON.stringify(config))
+              });
+            }
+          };
+        }
+      }
+      
+      setToast('Export complete!');
+    } catch (err) {
+      console.error("Export failed", err);
+      setToast('Export failed. Check CORS or network.');
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setToast(null), 3000);
+      // Reset preview size in engine if we touched it
+      if (ext === 'svg') {
+        setTimeout(() => qrStyling.current?.update({ width: 320, height: 320 }), 500);
+      }
+    }
   };
 
   const handleCopy = async () => {
-    if (!qrStyling.current) return;
-    const blob = await qrStyling.current.getRawData('png') as Blob;
-    if (blob) {
-      const item = new ClipboardItem({ 'image/png': blob });
-      await navigator.clipboard.write([item]);
-      setToast('Copied to clipboard!');
-      setTimeout(() => setToast(null), 2000);
+    if (!previewRef.current) return;
+    setToast('Preparing high-res copy...');
+    
+    try {
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: null,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const elements = clonedDoc.getElementsByTagName('*');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i] as HTMLElement;
+            const style = window.getComputedStyle(el);
+            const isUnsupported = (val: string) => val.includes('oklch') || val.includes('oklab');
+
+            if (isUnsupported(style.boxShadow || '')) el.style.boxShadow = 'none';
+            
+            if (isUnsupported(style.color || '')) {
+              el.style.color = '#ffffff';
+            }
+
+            if (el.style.background || el.style.backgroundImage) {
+              // Keep our hex-based gradients
+            } else if (isUnsupported(style.backgroundColor || '')) {
+              const classList = el.className;
+              if (classList.includes('bg-white')) el.style.backgroundColor = '#ffffff';
+              else if (classList.includes('bg-black')) el.style.backgroundColor = '#000000';
+              else el.style.backgroundColor = 'transparent';
+            }
+
+            if (isUnsupported(style.borderColor || '')) {
+              if (el.className.includes('border-primary')) el.style.borderColor = '#00ffcc';
+              else el.style.borderColor = '#ffffff';
+            }
+          }
+        }
+      });
+
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          setToast('Styles copied to clipboard!');
+        }
+      }, 'image/png');
+    } catch (err) {
+      console.error("Copy failed", err);
+      setToast('Copy failed.');
+    } finally {
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -428,6 +471,14 @@ function App() {
     setConfig(prev => {
       const next = { ...prev, ...updates };
       
+      // Auto-detect type if generic content changes
+      if (updates.content && !updates.type) {
+        const detectedType = detectContentType(updates.content);
+        if (detectedType && detectedType !== prev.type) {
+          next.type = detectedType as QRType;
+        }
+      }
+
       // Auto-generate content based on specialized fields
       if (next.type === 'wifi') {
         next.content = `WIFI:S:${next.ssid || ''};T:${next.encryption || 'WPA'};P:${next.password || ''};H:${next.hidden ? 'true' : 'false'};;`;
@@ -442,7 +493,7 @@ function App() {
       } else if (next.type === 'vcard') {
         next.content = `BEGIN:VCARD\nVERSION:3.0\nN:${next.lastName || ''};${next.firstName || ''}\nFN:${next.firstName || ''} ${next.lastName || ''}\nORG:${next.organization || ''}\nTEL;TYPE=WORK,VOICE:${next.vCardPhone || ''}\nEMAIL;TYPE=PREF,INTERNET:${next.vCardEmail || ''}\nURL:${next.vCardUrl || ''}\nEND:VCARD`;
       }
-      
+
       return next;
     });
   };
@@ -548,109 +599,91 @@ function App() {
             {/* QR Container */}
             <div className="relative group">
               <div className="absolute -inset-4 bg-primary/10 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              
-              <motion.div 
+                         <motion.div 
+                ref={previewRef}
                 className={cn(
-                  "relative transition-all duration-300 flex flex-col items-center justify-center",
-                  config.frame.style === 'border' && "border-2 border-primary p-4 rounded-2xl",
-                  config.frame.style === 'card' && "bg-white dark:bg-black p-6 rounded-3xl shadow-2xl border border-slate-100 dark:border-zinc-800",
-                  config.frame.style === 'badge' && "bg-black dark:bg-white p-3 rounded-[40px] shadow-xl"
+                  "relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden"
                 )}
+                style={{
+                  backgroundColor: config.frame.style !== 'none' ? config.frame.backgroundColor : 'transparent',
+                  borderColor: config.frame.style !== 'none' ? config.frame.borderColor : 'transparent',
+                  borderWidth: config.frame.style !== 'none' ? `${config.frame.borderWidth}px` : '0px',
+                  borderRadius: config.frame.style !== 'none' 
+                    ? (config.frame.style === 'badge' ? '9999px' : `${config.frame.borderRadius}px`) 
+                    : '0px',
+                  padding: config.frame.style !== 'none' ? `${config.frame.padding}px` : '0px',
+                  boxShadow: config.frame.shadowIntensity > 0 
+                    ? `0 ${config.frame.padding / 2}px ${config.frame.padding}px -${config.frame.padding / 4}px ${config.frame.shadowColor}${Math.round(config.frame.shadowIntensity * 255).toString(16).padStart(2, '0')}` 
+                    : 'none'
+                }}
               >
-                <div className={cn(
-                  "relative w-[280px] h-[280px] md:w-[320px] md:h-[320px] flex items-center justify-center rounded-xl overflow-hidden shadow-inner",
-                  config.skin === 'cherry' && "bg-gradient-to-br from-[#fff0f3] to-[#ffccd5]",
-                  config.skin === 'wave' && "bg-gradient-to-br from-[#e0f2fe] to-[#7dd3fc]",
-                  config.skin === 'aurora' && "bg-gradient-to-tr from-[#00ffcc] via-[#00c6ff] to-[#0072ff]",
-                  config.skin === 'cyberpunk' && "bg-slate-950",
-                  config.skin === 'midnight' && "bg-gradient-to-b from-[#0f172a] via-[#1e1b4b] to-[#020617]",
-                  config.skin === 'sunset' && "bg-gradient-to-t from-[#ff7e5f] via-[#feb47b] to-[#86a8e7]",
-                  config.skin === 'forest' && "bg-gradient-to-br from-[#1b4332] via-[#2d6a4f] to-[#52b788]",
-                  (!config.skin || config.skin === 'none') && "bg-white"
-                )}>
+                <div 
+                  className={cn(
+                    "relative w-[280px] h-[280px] md:w-[340px] md:h-[340px] flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl",
+                    (!config.skin || config.skin === 'none') && "bg-white"
+                  )}
+                  style={{
+                    background: config.skin === 'cherry' ? 'linear-gradient(135deg, #fff5f7 0%, #ffccd5 100%)' :
+                               config.skin === 'wave' ? 'linear-gradient(135deg, #f0f9ff 0%, #7dd3fc 100%)' :
+                               config.skin === 'aurora' ? 'linear-gradient(45deg, #00ffcc 0%, #00c6ff 50%, #0072ff 100%)' :
+                               config.skin === 'cyberpunk' ? 'linear-gradient(135deg, #020617 0%, #1e1b4b 100%)' :
+                               config.skin === 'midnight' ? 'linear-gradient(180deg, #0f172a 0%, #020617 100%)' :
+                               config.skin === 'sunset' ? 'linear-gradient(180deg, #ff7e5f 0%, #feb47b 100%)' :
+                               config.skin === 'forest' ? 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)' :
+                               undefined
+                  }}
+                >
+                  {/* Skin Background Effects */}
                   {config.skin === 'cherry' && (
-                    <div className="absolute inset-0 pointer-events-none opacity-20">
-                      {[...Array(6)].map((_, i) => (
-                        <Flower2 
-                          key={i} 
-                          className="absolute animate-bounce" 
-                          style={{ 
-                            top: `${Math.random() * 100}%`, 
-                            left: `${Math.random() * 100}%`, 
-                            transform: `rotate(${Math.random() * 360}deg)`,
-                            animationDuration: `${3 + Math.random() * 2}s`
-                          }} 
-                          size={24} 
-                          color="#ff4d6d" 
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {config.skin === 'wave' && (
-                    <div className="absolute inset-0 pointer-events-none opacity-20 overflow-hidden">
-                      <motion.div 
-                        animate={{ x: [-20, 0, -20] }} 
-                        transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-                        className="absolute inset-[-40px] flex flex-col gap-4"
-                      >
-                        {[...Array(12)].map((_, i) => (
-                          <div key={i} className="h-4 w-full bg-primary/20 rounded-full blur-xl" style={{ marginLeft: `${i % 2 === 0 ? 0 : 40}px` }} />
-                        ))}
-                      </motion.div>
-                    </div>
-                  )}
-                  {config.skin === 'aurora' && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                      <motion.div 
-                        animate={{ 
-                          scale: [1, 1.2, 1],
-                          rotate: [0, 90, 0]
-                        }}
-                        transition={{ repeat: Infinity, duration: 10, ease: "linear" }}
-                        className="absolute inset-[-50%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_70%)] from-white/20"
-                      />
-                      {[...Array(8)].map((_, i) => (
-                        <Sparkles 
-                          key={i} 
-                          className="absolute animate-pulse" 
-                          style={{ 
-                            top: `${Math.random() * 100}%`, 
-                            left: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 2}s`
-                          }} 
-                          size={16} 
-                          color="white" 
-                        />
+                    <div className="absolute inset-0 pointer-events-none opacity-40">
+                      {[1,2,3,4,5,6,7,8].map((i) => (
+                        <motion.div
+                          key={i}
+                          animate={{ 
+                            y: [0, 20, 0], 
+                            rotate: [0, 45, 0],
+                            opacity: [0.2, 0.5, 0.2]
+                          }}
+                          transition={{ repeat: Infinity, duration: 4 + i, delay: i * 0.5 }}
+                          className="absolute text-pink-400"
+                          style={{ top: `${(i*13)%100}%`, left: `${(i*17)%100}%` }}
+                        >
+                          <Flower2 size={24} />
+                        </motion.div>
                       ))}
                     </div>
                   )}
                   {config.skin === 'cyberpunk' && (
-                    <div className="absolute inset-0 pointer-events-none opacity-30 overflow-hidden">
-                      <div className="absolute inset-0 bg-[linear-gradient(to_right,#334155_1px,transparent_1px),linear-gradient(to_bottom,#334155_1px,transparent_1px)] bg-[size:40px_40px]" />
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,204,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,204,0.05)_1px,transparent_1px)] bg-[size:20px_20px]" />
+                      <motion.div 
+                        animate={{ opacity: [0.1, 0.2, 0.1] }}
+                        transition={{ duration: 0.1, repeat: Infinity }}
+                        className="absolute inset-0 bg-[#f0f]/5"
+                      />
+                    </div>
+                  )}
+                  {config.skin === 'wave' && (
+                    <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden">
+                      <motion.div 
+                        animate={{ y: [0, -10, 0], x: [-5, 5, -5] }} 
+                        transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
+                        className="absolute inset-0 bg-gradient-to-t from-blue-400/20 to-transparent"
+                      >
+                         <Waves className="absolute bottom-0 w-full h-20 opacity-30 text-blue-500" />
+                      </motion.div>
+                    </div>
+                  )}
+                  {config.skin === 'aurora' && (
+                    <div className="absolute inset-0 pointer-events-none">
                       <motion.div 
                         animate={{ 
-                          opacity: [0.1, 0.4, 0.1],
-                          scale: [1, 1.1, 1]
-                        }} 
-                        transition={{ repeat: Infinity, duration: 2 }}
-                        className="absolute inset-0 bg-primary/10"
+                          backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'],
+                          opacity: [0.3, 0.6, 0.3]
+                        }}
+                        transition={{ duration: 15, repeat: Infinity }}
+                        className="absolute inset-0 bg-gradient-to-br from-cyan-500/30 via-emerald-500/30 to-blue-500/30 blur-3xl scale-150"
                       />
-                      {[...Array(5)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          animate={{ 
-                            y: [0, -100],
-                            opacity: [0, 1, 0]
-                          }}
-                          transition={{ 
-                            repeat: Infinity, 
-                            duration: 2 + i,
-                            delay: i * 0.5
-                          }}
-                          className="absolute w-10 h-1 bg-primary blur-sm"
-                          style={{ left: `${i * 20}%`, top: '100%' }}
-                        />
-                      ))}
                     </div>
                   )}
                   {config.skin === 'midnight' && (
@@ -826,7 +859,7 @@ function App() {
                 { id: 'skins', icon: Sparkles, label: 'Skins' },
                 { id: 'colors', icon: Palette, label: 'Colors' },
                 { id: 'logo', icon: ImageIcon, label: 'Logo' },
-                { id: 'label', icon: Type, label: 'Label' }
+                { id: 'label', icon: Layout, label: 'Frame' }
               ]} 
               activeTab={activeTab} 
               onChange={(id) => setActiveTab(id as any)} 
@@ -1109,23 +1142,6 @@ function App() {
                     ))}
                   </div>
 
-                  <SectionHeader title="Frame Style" />
-                  <div className="grid grid-cols-2 gap-3">
-                    {['none', 'border', 'card', 'badge'].map(style => (
-                      <button
-                        key={style}
-                        onClick={() => updateConfig({ frame: { ...config.frame, style: style as any } })}
-                        className={cn(
-                          "h-12 rounded-xl border-2 font-bold text-xs transition-all capitalize",
-                          config.frame.style === style 
-                            ? "border-primary bg-primary/5 text-primary" 
-                            : "border-slate-100 dark:border-slate-800 text-slate-400"
-                        )}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
                 </motion.div>
               )}
 
@@ -1312,7 +1328,25 @@ function App() {
 
               {activeTab === 'label' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Label Settings" />
+                  <SectionHeader title="Frame Layout" />
+                  <div className="grid grid-cols-2 gap-3">
+                    {['none', 'border', 'card', 'badge'].map(style => (
+                      <button
+                        key={style}
+                        onClick={() => updateConfig({ frame: { ...config.frame, style: style as any } })}
+                        className={cn(
+                          "h-12 rounded-xl border-2 font-bold text-xs transition-all capitalize",
+                          config.frame.style === style 
+                            ? "border-primary bg-primary/5 text-primary" 
+                            : "border-slate-100 dark:border-slate-800 text-slate-400"
+                        )}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+
+                  <SectionHeader title="Label Content" />
                   <div className="space-y-4">
                     <InputGroup label="Tagline Text">
                       <input 
@@ -1360,6 +1394,92 @@ function App() {
                       <input type="range" min="8" max="48" value={config.frame.fontSize} onChange={(e) => updateConfig({ frame: { ...config.frame, fontSize: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
                     </InputGroup>
                   </div>
+
+                  {config.frame.style !== 'none' && (
+                    <>
+                      <SectionHeader title="Frame Aesthetics" />
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <InputGroup label="Card BG">
+                            <div className="flex items-center gap-2 h-9 px-1">
+                              <input 
+                                type="text" 
+                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                                value={config.frame.backgroundColor}
+                                onChange={(e) => updateConfig({ frame: { ...config.frame, backgroundColor: e.target.value } })}
+                              />
+                              <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                                <input 
+                                  type="color" 
+                                  className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
+                                  value={config.frame.backgroundColor}
+                                  onChange={(e) => updateConfig({ frame: { ...config.frame, backgroundColor: e.target.value } })}
+                                />
+                              </div>
+                            </div>
+                          </InputGroup>
+
+                          <InputGroup label="Border Color">
+                            <div className="flex items-center gap-2 h-9 px-1">
+                              <input 
+                                type="text" 
+                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                                value={config.frame.borderColor}
+                                onChange={(e) => updateConfig({ frame: { ...config.frame, borderColor: e.target.value } })}
+                              />
+                              <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                                <input 
+                                  type="color" 
+                                  className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
+                                  value={config.frame.borderColor}
+                                  onChange={(e) => updateConfig({ frame: { ...config.frame, borderColor: e.target.value } })}
+                                />
+                              </div>
+                            </div>
+                          </InputGroup>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          {config.frame.style !== 'badge' && (
+                            <InputGroup label={`Corner: ${config.frame.borderRadius}px`}>
+                              <input type="range" min="0" max="100" value={config.frame.borderRadius} onChange={(e) => updateConfig({ frame: { ...config.frame, borderRadius: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
+                            </InputGroup>
+                          )}
+                          <InputGroup label={`Border: ${config.frame.borderWidth}px`}>
+                            <input type="range" min="0" max="20" value={config.frame.borderWidth} onChange={(e) => updateConfig({ frame: { ...config.frame, borderWidth: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
+                          </InputGroup>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                           <InputGroup label={`Padding: ${config.frame.padding}px`}>
+                            <input type="range" min="4" max="80" value={config.frame.padding} onChange={(e) => updateConfig({ frame: { ...config.frame, padding: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
+                          </InputGroup>
+                          <InputGroup label={`Shadow: ${Math.round(config.frame.shadowIntensity * 100)}%`}>
+                            <input type="range" min="0" max="100" value={config.frame.shadowIntensity * 100} onChange={(e) => updateConfig({ frame: { ...config.frame, shadowIntensity: parseInt(e.target.value) / 100 } })} className="w-full accent-primary h-6" />
+                          </InputGroup>
+                        </div>
+
+                        <InputGroup label="Shadow Color">
+                          <div className="flex items-center gap-2 h-9 px-1">
+                            <input 
+                              type="text" 
+                              className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                              value={config.frame.shadowColor}
+                              onChange={(e) => updateConfig({ frame: { ...config.frame, shadowColor: e.target.value } })}
+                            />
+                            <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                              <input 
+                                type="color" 
+                                className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
+                                value={config.frame.shadowColor}
+                                onChange={(e) => updateConfig({ frame: { ...config.frame, shadowColor: e.target.value } })}
+                              />
+                            </div>
+                          </div>
+                        </InputGroup>
+                      </div>
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
