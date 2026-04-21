@@ -2,12 +2,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   QrCode, 
-  Moon, 
-  Sun,
   Download,
   Copy,
   CheckCircle2,
   ArrowLeft,
+  RotateCcw,
   Link as LinkIcon,
   Type,
   Wifi,
@@ -34,7 +33,8 @@ import {
   Trees,
   FileText,
   Upload,
-  File as FileIcon
+  Moon,
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCodeStyling from 'qr-code-styling';
@@ -91,7 +91,6 @@ export default function App() {
   const [config, setConfig] = useState<QRConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState<'content' | 'design' | 'colors' | 'logo' | 'label' | 'skins'>('content');
   const [isExporting, setIsExporting] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -101,6 +100,37 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [qrInstance, setQrInstance] = useState<QRCodeStyling | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  
+  // Force dark mode on document
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+  }, []);
+
+  const resetToDefault = (section?: string) => {
+    if (!section) {
+      setConfig(DEFAULT_CONFIG);
+      setToast('Configuration reset');
+    } else {
+      // Functional reset for sections
+      if (section === 'design') {
+        updateConfig({ 
+          dots: DEFAULT_CONFIG.dots, 
+          corners: DEFAULT_CONFIG.corners,
+          background: DEFAULT_CONFIG.background
+        });
+      } else if (section === 'frame') {
+        updateConfig({ frame: DEFAULT_CONFIG.frame });
+      } else if (section === 'colors') {
+        updateConfig({ 
+          dots: { ...config.dots, color: DEFAULT_CONFIG.dots.color, gradient: DEFAULT_CONFIG.dots.gradient },
+          background: DEFAULT_CONFIG.background,
+          frame: { ...config.frame, backgroundColor: DEFAULT_CONFIG.frame.backgroundColor, borderColor: DEFAULT_CONFIG.frame.borderColor, color: DEFAULT_CONFIG.frame.color }
+        });
+      }
+      setToast(`Reset ${section} settings`);
+    }
+    setTimeout(() => setToast(null), 3000);
+  };
   
   const qrContainerRef = useCallback((node: HTMLDivElement | null) => {
     if (node !== null && qrInstance) {
@@ -118,8 +148,8 @@ export default function App() {
     const savedHistory = localStorage.getItem('lucidqr_history');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     
-    const savedTheme = localStorage.getItem('lucidqr_theme');
-    if (savedTheme === 'dark') setIsDarkMode(true);
+    // Theme is now forced to dark
+    document.documentElement.classList.add('dark');
 
     // Migration: If the default color is still the old blue, reset it to white for Aura theme
     setConfig(prev => {
@@ -185,15 +215,6 @@ export default function App() {
 
     return () => unsubscribe();
   }, [user, isAuthReady]);
-
-  // Sync Dark Mode with HTML element
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
 
   // --- Smart Content Detection ---
   const detectContentType = useCallback((val: string) => {
@@ -515,16 +536,25 @@ export default function App() {
   };
 
   // --- Render Helpers ---
-  const SectionHeader = ({ title }: { title: string }) => (
-    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4 mt-8 first:mt-0 border-b border-slate-100 dark:border-slate-800 pb-2">
-      {title}
+  const SectionHeader = ({ title, onReset }: { title: string; onReset?: () => void }) => (
+    <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-4 mt-8 first:mt-0 border-b border-slate-800 pb-2">
+      <span>{title}</span>
+      {onReset && (
+        <button 
+          onClick={onReset}
+          className="p-1 hover:bg-white/5 rounded-md transition-colors text-slate-500 hover:text-primary group"
+          title="Reset Section"
+        >
+          <RotateCcw size={12} className="group-active:rotate-[-90deg] transition-transform" />
+        </button>
+      )}
     </div>
   );
 
   return (
-    <div className={cn("flex flex-col h-screen overflow-hidden transition-colors duration-300", isDarkMode ? "dark bg-black" : "bg-white")}>
+    <div className="flex flex-col h-screen overflow-hidden bg-black dark font-sans">
       {/* Header */}
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0 bg-white dark:bg-black z-50">
+      <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 bg-black z-50">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-slate-800">
             <img src="/logo.png" alt="QR Aura" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -533,21 +563,18 @@ export default function App() {
             <LiquidMetalLogo className="text-xl font-black tracking-tighter leading-none">
               QR Aura
             </LiquidMetalLogo>
-            <span className="text-[9px] font-bold text-primary dark:text-primary/80 uppercase tracking-[0.2em] mt-0.5">
+            <span className="text-[9px] font-bold text-primary/80 uppercase tracking-[0.2em] mt-0.5">
               <TypewriterText text="Generate the Invisible • Craft Your Aura" delay={1.5} repeat={true} />
             </span>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => {
-              const next = !isDarkMode;
-              setIsDarkMode(next);
-              localStorage.setItem('lucidqr_theme', next ? 'dark' : 'light');
-            }}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors dark:text-white"
+            onClick={() => resetToDefault()}
+            className="h-9 px-4 rounded-xl border border-slate-800 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:bg-white/5 hover:text-white transition-all flex items-center gap-2"
           >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            <RotateCcw size={14} />
+            Restore Defaults
           </button>
 
           {!isAuthReady ? (
@@ -609,7 +636,7 @@ export default function App() {
                   borderColor: config.frame.style !== 'none' ? config.frame.borderColor : 'transparent',
                   borderWidth: config.frame.style !== 'none' ? `${config.frame.borderWidth}px` : '0px',
                   borderRadius: config.frame.style !== 'none' 
-                    ? (config.frame.style === 'badge' ? '9999px' : `${config.frame.borderRadius}px`) 
+                    ? `${config.frame.borderRadius}px`
                     : '0px',
                   padding: config.frame.style !== 'none' ? `${config.frame.padding}px` : '0px',
                   boxShadow: config.frame.shadowIntensity > 0 
@@ -834,7 +861,7 @@ export default function App() {
 
                 <ConicButton 
                   onClick={handleCopy}
-                  borderColor={isDarkMode ? "#334155" : "#cbd5e1"}
+                  borderColor="#334155"
                   className="h-14 rounded-2xl shadow-sm"
                 >
                   <Copy size={20} className="text-slate-900 dark:text-white" />
@@ -870,7 +897,7 @@ export default function App() {
             <AnimatePresence mode="wait">
               {activeTab === 'content' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Content Type" />
+                  <SectionHeader title="Content Type" onReset={() => updateConfig({ type: DEFAULT_CONFIG.type })} />
                   <div className="grid grid-cols-3 gap-2">
                     {QR_TYPES.map(type => {
                       const Icon = { Link: LinkIcon, Type, Wifi, Mail, Phone, User, FileText, Image: ImageIcon }[type.icon] as any;
@@ -882,7 +909,7 @@ export default function App() {
                             "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all min-h-[72px]",
                             config.type === type.id 
                               ? "border-primary bg-primary/5 text-primary" 
-                              : "border-slate-100 dark:border-slate-800 text-slate-400"
+                              : "border-slate-800 text-slate-500 hover:border-slate-700"
                           )}
                         >
                           <Icon size={20} />
@@ -892,12 +919,27 @@ export default function App() {
                     })}
                   </div>
 
-                  <SectionHeader title="Data Input" />
+                  <SectionHeader title="Data Input" onReset={() => updateConfig({ 
+                    content: DEFAULT_CONFIG.content,
+                    ssid: DEFAULT_CONFIG.ssid,
+                    password: DEFAULT_CONFIG.password,
+                    encryption: DEFAULT_CONFIG.encryption,
+                    email: DEFAULT_CONFIG.email,
+                    subject: DEFAULT_CONFIG.subject,
+                    body: DEFAULT_CONFIG.body,
+                    phone: DEFAULT_CONFIG.phone,
+                    firstName: DEFAULT_CONFIG.firstName,
+                    lastName: DEFAULT_CONFIG.lastName,
+                    organization: DEFAULT_CONFIG.organization,
+                    vCardPhone: DEFAULT_CONFIG.vCardPhone,
+                    vCardEmail: DEFAULT_CONFIG.vCardEmail,
+                    vCardUrl: DEFAULT_CONFIG.vCardUrl
+                  })} />
                   <div className="space-y-4">
                     {config.type === 'url' && (
                       <InputGroup label="Website Link">
                         <input 
-                          className="w-full h-11 bg-transparent border-none px-1 text-sm focus:ring-0 outline-none dark:text-white"
+                          className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                           type="url"
                           value={config.content}
                           onChange={(e) => handleContentChange(e.target.value)}
@@ -908,7 +950,7 @@ export default function App() {
                     {config.type === 'text' && (
                       <InputGroup label="Custom Text">
                         <textarea 
-                          className="w-full bg-transparent border-none p-1 text-sm focus:ring-0 outline-none min-h-[100px] dark:text-white resize-none"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-sm focus:border-primary/50 outline-none min-h-[100px] text-white resize-none transition-colors"
                           value={config.content}
                           onChange={(e) => updateConfig({ content: e.target.value })}
                           placeholder="Enter your message..."
@@ -919,7 +961,7 @@ export default function App() {
                       <div className="space-y-3">
                         <InputGroup label="Network Name">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             placeholder="Enter SSID"
                             value={config.ssid || ''}
                             onChange={(e) => updateConfig({ ssid: e.target.value })}
@@ -928,18 +970,18 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-2">
                           <InputGroup label="Type">
                             <select 
-                              className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white cursor-pointer"
+                              className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-2 text-sm outline-none text-white cursor-pointer focus:border-primary/50 transition-colors"
                               value={config.encryption || 'WPA'}
                               onChange={(e) => updateConfig({ encryption: e.target.value as any })}
                             >
-                              <option value="WPA">WPA/WPA2</option>
-                              <option value="WEP">WEP</option>
-                              <option value="nopass">None</option>
+                              <option value="WPA" className="bg-black">WPA/WPA2</option>
+                              <option value="WEP" className="bg-black">WEP</option>
+                              <option value="nopass" className="bg-black">None</option>
                             </select>
                           </InputGroup>
                           <InputGroup label="Password">
                             <input 
-                              className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                              className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                               type="password"
                               placeholder="Key"
                               value={config.password || ''}
@@ -953,7 +995,7 @@ export default function App() {
                       <div className="space-y-3">
                         <InputGroup label="Recipient Address">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             type="email"
                             placeholder="mail@example.com"
                             value={config.email || ''}
@@ -962,7 +1004,7 @@ export default function App() {
                         </InputGroup>
                         <InputGroup label="Subject">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             placeholder="Message Subject"
                             value={config.subject || ''}
                             onChange={(e) => updateConfig({ subject: e.target.value })}
@@ -970,7 +1012,7 @@ export default function App() {
                         </InputGroup>
                         <InputGroup label="Message Body">
                           <textarea 
-                            className="w-full bg-transparent border-none p-1 text-sm focus:ring-0 outline-none min-h-[100px] dark:text-white resize-none"
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-sm focus:border-primary/50 outline-none min-h-[100px] text-white resize-none transition-colors"
                             placeholder="Type your message..."
                             value={config.body || ''}
                             onChange={(e) => updateConfig({ body: e.target.value })}
@@ -981,7 +1023,7 @@ export default function App() {
                     {config.type === 'phone' && (
                       <InputGroup label="Phone Number">
                         <input 
-                          className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                          className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                           type="tel"
                           placeholder="+1 234 567 890"
                           value={config.phone || ''}
@@ -994,14 +1036,14 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-2">
                           <InputGroup label="First Name">
                             <input 
-                              className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                              className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                               value={config.firstName || ''}
                               onChange={(e) => updateConfig({ firstName: e.target.value })}
                             />
                           </InputGroup>
                           <InputGroup label="Last Name">
                             <input 
-                              className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                              className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                               value={config.lastName || ''}
                               onChange={(e) => updateConfig({ lastName: e.target.value })}
                             />
@@ -1009,14 +1051,14 @@ export default function App() {
                         </div>
                         <InputGroup label="Organization">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             value={config.organization || ''}
                             onChange={(e) => updateConfig({ organization: e.target.value })}
                           />
                         </InputGroup>
                         <InputGroup label="Phone">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             type="tel"
                             value={config.vCardPhone || ''}
                             onChange={(e) => updateConfig({ vCardPhone: e.target.value })}
@@ -1024,7 +1066,7 @@ export default function App() {
                         </InputGroup>
                         <InputGroup label="Email">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             type="email"
                             value={config.vCardEmail || ''}
                             onChange={(e) => updateConfig({ vCardEmail: e.target.value })}
@@ -1032,7 +1074,7 @@ export default function App() {
                         </InputGroup>
                         <InputGroup label="Website">
                           <input 
-                            className="w-full h-11 bg-transparent border-none px-1 text-sm outline-none dark:text-white"
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             type="url"
                             value={config.vCardUrl || ''}
                             onChange={(e) => updateConfig({ vCardUrl: e.target.value })}
@@ -1102,7 +1144,7 @@ export default function App() {
 
               {activeTab === 'design' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Dot Pattern" />
+                  <SectionHeader title="Dot Pattern" onReset={() => updateConfig({ dots: { ...config.dots, type: DEFAULT_CONFIG.dots.type } })} />
                   <div className="grid grid-cols-3 gap-3">
                     {DOT_STYLES.map(style => {
                       const Icon = { Square, Circle, CircleDot, Grid2X2, Diamond, Waves, Flower2 }[style.icon] as any;
@@ -1114,7 +1156,7 @@ export default function App() {
                             "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
                             config.dots.type === style.id 
                               ? "border-primary bg-primary/5 text-primary scale-[1.04]" 
-                              : "border-slate-100 dark:border-slate-800 text-slate-400"
+                              : "border-slate-800 text-slate-500 hover:border-slate-700"
                           )}
                         >
                           <Icon size={24} />
@@ -1124,7 +1166,7 @@ export default function App() {
                     })}
                   </div>
 
-                  <SectionHeader title="Corner Style" />
+                  <SectionHeader title="Corner Style" onReset={() => updateConfig({ corners: { ...config.corners, type: DEFAULT_CONFIG.corners.type } })} />
                   <div className="grid grid-cols-2 gap-3">
                     {CORNER_STYLES.map(style => (
                       <button
@@ -1134,7 +1176,7 @@ export default function App() {
                           "h-12 rounded-xl border-2 font-bold text-xs transition-all",
                           config.corners.type === style.id 
                             ? "border-primary bg-primary/5 text-primary" 
-                            : "border-slate-100 dark:border-slate-800 text-slate-400"
+                            : "border-slate-800 text-slate-500 hover:border-slate-700"
                         )}
                       >
                         {style.label}
@@ -1147,7 +1189,7 @@ export default function App() {
 
               {activeTab === 'skins' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Premium Skins" />
+                  <SectionHeader title="Premium Skins" onReset={() => updateConfig({ skin: DEFAULT_CONFIG.skin })} />
                   <div className="grid grid-cols-2 gap-3">
                     {SKINS.map(skin => {
                       const Icon = { Square, Flower2, Waves, Sparkles, Zap, Moon, Sun, Trees }[skin.icon] as any;
@@ -1159,7 +1201,7 @@ export default function App() {
                             "flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all relative overflow-hidden group text-center",
                             config.skin === skin.id 
                               ? "border-primary bg-primary/5 text-primary" 
-                              : "border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200 dark:hover:border-slate-700"
+                              : "border-slate-800 text-slate-500 hover:border-slate-700"
                           )}
                         >
                           <div className={cn(
@@ -1186,13 +1228,13 @@ export default function App() {
 
               {activeTab === 'colors' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Solid Colors" />
+                  <SectionHeader title="Solid Colors" onReset={() => updateConfig({ dots: { ...config.dots, color: DEFAULT_CONFIG.dots.color }, corners: { ...config.corners, color: DEFAULT_CONFIG.corners.color }, background: { ...config.background, color: DEFAULT_CONFIG.background.color } })} />
                   <div className="space-y-3">
                     <InputGroup label="Dots & Corners">
                       <div className="flex items-center gap-3">
                         <input 
                           type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-slate-900 dark:text-white focus:ring-0 outline-none"
+                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-white focus:ring-0 outline-none"
                           value={config.dots.color}
                           onChange={(e) => updateConfig({ 
                             dots: { ...config.dots, color: e.target.value },
@@ -1200,7 +1242,7 @@ export default function App() {
                             frame: { ...config.frame, color: e.target.value }
                           })}
                         />
-                        <div className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                        <div className="w-8 h-8 rounded-lg border border-slate-700 relative overflow-hidden shrink-0">
                           <input 
                             type="color" 
                             className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
@@ -1219,11 +1261,11 @@ export default function App() {
                       <div className="flex items-center gap-3">
                         <input 
                           type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-slate-900 dark:text-white focus:ring-0 outline-none"
+                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-white focus:ring-0 outline-none"
                           value={config.background.color}
                           onChange={(e) => updateConfig({ background: { ...config.background, color: e.target.value } })}
                         />
-                        <div className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                        <div className="w-8 h-8 rounded-lg border border-slate-700 relative overflow-hidden shrink-0">
                           <input 
                             type="color" 
                             className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
@@ -1235,10 +1277,10 @@ export default function App() {
                     </InputGroup>
                   </div>
 
-                  <SectionHeader title="Gradient Mode" />
+                  <SectionHeader title="Gradient Mode" onReset={() => updateConfig({ dots: { ...config.dots, gradient: DEFAULT_CONFIG.dots.gradient } })} />
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold dark:text-white">Enable Gradient</span>
+                      <span className="text-sm font-bold text-white">Enable Gradient</span>
                       <button 
                         onClick={() => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, enabled: !config.dots.gradient?.enabled } } })}
                         className={cn(
@@ -1277,13 +1319,13 @@ export default function App() {
 
               {activeTab === 'logo' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Branding" />
+                  <SectionHeader title="Branding" onReset={() => updateConfig({ logo: DEFAULT_CONFIG.logo })} />
                   <div className="space-y-4">
                     <InputGroup label="Logo Source">
                       <div className="flex flex-col gap-2">
                         <div className="group relative">
                           <input 
-                            className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white"
+                            className="w-full h-9 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                             placeholder="https://..."
                             value={config.logo?.src || ''}
                             onChange={(e) => updateConfig({ logo: { ...config.logo!, src: e.target.value } })}
@@ -1328,9 +1370,9 @@ export default function App() {
 
               {activeTab === 'label' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Frame Layout" />
-                  <div className="grid grid-cols-2 gap-3">
-                    {['none', 'border', 'card', 'badge'].map(style => (
+                  <SectionHeader title="Frame Layout" onReset={() => updateConfig({ frame: { ...config.frame, style: DEFAULT_CONFIG.frame.style } })} />
+                  <div className="grid grid-cols-3 gap-3">
+                    {['none', 'border', 'card'].map(style => (
                       <button
                         key={style}
                         onClick={() => updateConfig({ frame: { ...config.frame, style: style as any } })}
@@ -1338,7 +1380,7 @@ export default function App() {
                           "h-12 rounded-xl border-2 font-bold text-xs transition-all capitalize",
                           config.frame.style === style 
                             ? "border-primary bg-primary/5 text-primary" 
-                            : "border-slate-100 dark:border-slate-800 text-slate-400"
+                            : "border-slate-800 text-slate-500 hover:border-slate-700"
                         )}
                       >
                         {style}
@@ -1346,11 +1388,11 @@ export default function App() {
                     ))}
                   </div>
 
-                  <SectionHeader title="Label Content" />
+                  <SectionHeader title="Label Content" onReset={() => updateConfig({ frame: { ...config.frame, text: DEFAULT_CONFIG.frame.text, fontSize: DEFAULT_CONFIG.frame.fontSize, color: DEFAULT_CONFIG.frame.color, fontFamily: DEFAULT_CONFIG.frame.fontFamily } })} />
                   <div className="space-y-4">
                     <InputGroup label="Tagline Text">
                       <input 
-                        className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white"
+                        className="w-full h-9 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
                         placeholder="SCAN ME"
                         value={config.frame.text}
                         onChange={(e) => updateConfig({ frame: { ...config.frame, text: e.target.value } })}
@@ -1360,12 +1402,12 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-3">
                       <InputGroup label="Text Font">
                         <select 
-                          className="w-full h-9 bg-transparent border-none px-1 text-sm outline-none text-slate-900 dark:text-white cursor-pointer"
+                          className="w-full h-9 bg-slate-900 border border-slate-800 rounded-lg px-2 text-sm outline-none text-white cursor-pointer focus:border-primary/50 transition-colors"
                           value={config.frame.fontFamily}
                           onChange={(e) => updateConfig({ frame: { ...config.frame, fontFamily: e.target.value } })}
                         >
                           {FONT_OPTIONS.map(font => (
-                            <option key={font.id} value={font.id}>{font.label}</option>
+                            <option key={font.id} value={font.id} className="bg-black">{font.label}</option>
                           ))}
                         </select>
                       </InputGroup>
@@ -1374,11 +1416,11 @@ export default function App() {
                         <div className="flex items-center gap-2 h-9 px-1">
                           <input 
                             type="text" 
-                            className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                            className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
                             value={config.frame.color}
                             onChange={(e) => updateConfig({ frame: { ...config.frame, color: e.target.value } })}
                           />
-                          <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                          <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
                             <input 
                               type="color" 
                               className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
@@ -1397,18 +1439,18 @@ export default function App() {
 
                   {config.frame.style !== 'none' && (
                     <>
-                      <SectionHeader title="Frame Aesthetics" />
+                      <SectionHeader title="Frame Aesthetics" onReset={() => updateConfig({ frame: { ...config.frame, backgroundColor: DEFAULT_CONFIG.frame.backgroundColor, borderColor: DEFAULT_CONFIG.frame.borderColor, borderRadius: DEFAULT_CONFIG.frame.borderRadius, borderWidth: DEFAULT_CONFIG.frame.borderWidth, padding: DEFAULT_CONFIG.frame.padding, shadowColor: DEFAULT_CONFIG.frame.shadowColor, shadowIntensity: DEFAULT_CONFIG.frame.shadowIntensity } })} />
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
                           <InputGroup label="Card BG">
                             <div className="flex items-center gap-2 h-9 px-1">
                               <input 
                                 type="text" 
-                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
                                 value={config.frame.backgroundColor}
                                 onChange={(e) => updateConfig({ frame: { ...config.frame, backgroundColor: e.target.value } })}
                               />
-                              <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                              <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
                                 <input 
                                   type="color" 
                                   className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
@@ -1423,11 +1465,11 @@ export default function App() {
                             <div className="flex items-center gap-2 h-9 px-1">
                               <input 
                                 type="text" 
-                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
                                 value={config.frame.borderColor}
                                 onChange={(e) => updateConfig({ frame: { ...config.frame, borderColor: e.target.value } })}
                               />
-                              <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                              <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
                                 <input 
                                   type="color" 
                                   className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
@@ -1440,11 +1482,9 @@ export default function App() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                          {config.frame.style !== 'badge' && (
-                            <InputGroup label={`Corner: ${config.frame.borderRadius}px`}>
-                              <input type="range" min="0" max="100" value={config.frame.borderRadius} onChange={(e) => updateConfig({ frame: { ...config.frame, borderRadius: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                            </InputGroup>
-                          )}
+                          <InputGroup label={`Corner: ${config.frame.borderRadius}px`}>
+                            <input type="range" min="0" max="100" value={config.frame.borderRadius} onChange={(e) => updateConfig({ frame: { ...config.frame, borderRadius: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
+                          </InputGroup>
                           <InputGroup label={`Border: ${config.frame.borderWidth}px`}>
                             <input type="range" min="0" max="20" value={config.frame.borderWidth} onChange={(e) => updateConfig({ frame: { ...config.frame, borderWidth: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
                           </InputGroup>
@@ -1463,11 +1503,11 @@ export default function App() {
                           <div className="flex items-center gap-2 h-9 px-1">
                             <input 
                               type="text" 
-                              className="flex-1 bg-transparent border-none text-[10px] font-mono text-slate-900 dark:text-white focus:ring-0 outline-none"
+                              className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
                               value={config.frame.shadowColor}
                               onChange={(e) => updateConfig({ frame: { ...config.frame, shadowColor: e.target.value } })}
                             />
-                            <div className="w-6 h-6 rounded border border-slate-200 dark:border-slate-700 relative overflow-hidden shrink-0">
+                            <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
                               <input 
                                 type="color" 
                                 className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"

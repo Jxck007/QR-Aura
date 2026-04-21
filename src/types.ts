@@ -56,7 +56,7 @@ export interface QRConfig {
     hideBackgroundDots: boolean;
   };
   frame: {
-    style: 'none' | 'border' | 'card' | 'badge';
+    style: 'none' | 'border' | 'card';
     text: string;
     fontSize: number;
     color: string;
