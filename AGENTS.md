@@ -7,7 +7,7 @@ QR Aura is a premium, high-end QR code generator built with React 18, Vite, and 
 - **Styling**: Tailwind CSS (mobile-first, responsive, custom utility classes).
 - **QR Engine**: `qr-code-styling` for generating vector and raster QR codes.
 - **Capture**: `html2canvas` for precise image capture of the styled QR container.
-- **Backend**: Firebase (Firestore for history, Storage for some uploads, Auth for user-specific history).
+- **Backend**: None (Local-first, using `localStorage` for history).
 - **Animations**: `framer-motion` (motion/react) for all transitions and micro-interactions.
 
 ## Key Features
@@ -15,7 +15,7 @@ QR Aura is a premium, high-end QR code generator built with React 18, Vite, and 
 - **Skins**: Atmospheric background effects (Cherry Blossom, Aurora, Cyberpunk, etc.) applied strictly inside the QR container.
 - **Smart Content Detection**: Automatically detects QR type (URL, Email, WiFi, etc.) from user input.
 - **High-Res Export**: PNG (Standard/HD) and SVG (Vector) exports.
-- **History System**: Users can save and revisit generated QR codes; synced across devices when logged in via Google.
+- **History System**: Users can save and revisit generated QR codes; saved locally via `localStorage`.
 
 ## Design Principles
 - **Atmospheric Isolation**: The QR preview exists in a "design layer" independent from the app UI.

@@ -8,6 +8,29 @@ import {
   ArrowLeft,
   RotateCcw,
   Link as LinkIcon,
+  Type as FontIcon,
+  Palette as ColorsIcon,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Zap,
+  Moon,
+  Sun,
+  Trophy,
+  Trees,
+  Cloud,
+  Cpu,
+  Settings,
+  Snowflake,
+  Flame,
+  Coffee,
+  Leaf,
+  GlassWater,
+  Wind,
+  Ghost,
+  Music,
+  Sunrise,
+  Target,
   Type,
   Wifi,
   Mail,
@@ -29,194 +52,179 @@ import {
   ChevronUp,
   Layout,
   Info,
-  Zap,
-  Trees,
-  FileText,
-  Upload,
-  Moon,
-  Sun
+  ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCodeStyling from 'qr-code-styling';
 import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { cn } from './lib/utils';
-import { QRConfig, QRType, DotStyle, CornerStyle, HistoryEntry } from './types';
-import { DEFAULT_CONFIG, QR_TYPES, DOT_STYLES, CORNER_STYLES, SKINS, FONT_OPTIONS } from './constants';
-import { FloatingParticles } from './components/FloatingParticles';
-import { ConicButton, LiquidMetalLogo, TypewriterText, SmoothTabs, InputGroup } from './components/EnhancedUI';
-import { auth, db, storage } from './firebase';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, addDoc, deleteDoc, doc, setDoc, serverTimestamp, getDocs } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
-// --- Error Handling ---
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+import { QRConfig, QRType, DotStyle, CornerStyle, HistoryEntry, QRStyle } from './types';
+import { DEFAULT_CONFIG, QR_TYPES, DOT_STYLES, CORNER_STYLES, STYLE_PRESETS, FONT_OPTIONS, FONT_WEIGHTS } from './constants';
+import { ConicButton, LiquidMetalLogo, SmoothTabs, InputGroup, ColorInput, Tooltip, Dropdown } from './components/EnhancedUI';
 
 export default function App() {
   const [config, setConfig] = useState<QRConfig>(DEFAULT_CONFIG);
-  const [activeTab, setActiveTab] = useState<'content' | 'design' | 'colors' | 'logo' | 'label' | 'skins'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'design' | 'styles' | 'colors' | 'logo' | 'label'>('content');
   const [isExporting, setIsExporting] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [qrInstance, setQrInstance] = useState<QRCodeStyling | null>(null);
+  const [updateKey, setUpdateKey] = useState(0);
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const [showFullPreview, setShowFullPreview] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const qrStyling = useRef<QRCodeStyling | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Helpers ---
+  const updateConfig = (updates: any) => {
+    setConfig(prev => {
+      // Deep merge common nested objects to prevent data loss and stale closure issues
+      const mergeNested = (key: string) => {
+        if (updates[key] && typeof updates[key] === 'object' && !Array.isArray(updates[key])) {
+          return { ...prev[key as keyof QRConfig], ...updates[key] };
+        }
+        return updates[key] !== undefined ? updates[key] : prev[key as keyof QRConfig];
+      };
+
+      let next = {
+        ...prev,
+        ...updates,
+        dots: mergeNested('dots'),
+        background: mergeNested('background'),
+        corners: mergeNested('corners'),
+        label: mergeNested('label'),
+        logo: mergeNested('logo')
+      } as QRConfig;
+
+      // Special handling for gradients within dots
+      if (updates.dots?.gradient) {
+        next.dots.gradient = { ...prev.dots.gradient, ...updates.dots.gradient };
+      }
+
+      // Handle nested updates explicitly for presets
+      if (updates.style) {
+        const selectedPreset = STYLE_PRESETS.find(p => p.id === updates.style);
+        if (selectedPreset?.config) {
+          const { background, color, dotType, cornerType, gradient } = selectedPreset.config;
+          next = {
+            ...next,
+            background: { ...next.background, color: background },
+            dots: { 
+              ...next.dots, 
+              color: color, 
+              type: dotType as any, 
+              gradient: gradient ? { ...next.dots.gradient, ...gradient } : { ...next.dots.gradient, enabled: false } 
+            },
+            corners: { ...next.corners, type: cornerType as any, color: color }
+          };
+        }
+      }
+
+      const contentUpdates = { ...next };
+      if (updates.content && !updates.type) {
+        const detectedType = detectContentType(updates.content);
+        if (detectedType) contentUpdates.type = detectedType as QRType;
+      }
+      
+      // Sync Content logic...
+      if (contentUpdates.type === 'wifi') contentUpdates.content = `WIFI:S:${contentUpdates.ssid || ''};T:${contentUpdates.encryption || 'WPA'};P:${contentUpdates.password || ''};;`;
+      else if (contentUpdates.type === 'phone') contentUpdates.content = `tel:${contentUpdates.phone || ''}`;
+      else if (contentUpdates.type === 'email') contentUpdates.content = `mailto:${contentUpdates.email || ''}`;
+      
+      return contentUpdates;
+    });
+  };
   
-  // Force dark mode on document
+  // --- Layout & Scroll Events ---
   useEffect(() => {
-    document.documentElement.classList.add('dark');
+    const handleResize = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight && window.innerHeight < 600);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollPosition(e.currentTarget.scrollTop);
+  };
 
   const resetToDefault = (section?: string) => {
     if (!section) {
       setConfig(DEFAULT_CONFIG);
       setToast('Configuration reset');
     } else {
-      // Functional reset for sections
       if (section === 'design') {
         updateConfig({ 
           dots: DEFAULT_CONFIG.dots, 
           corners: DEFAULT_CONFIG.corners,
           background: DEFAULT_CONFIG.background
         });
-      } else if (section === 'frame') {
-        updateConfig({ frame: DEFAULT_CONFIG.frame });
+      } else if (section === 'style') {
+        updateConfig({ style: DEFAULT_CONFIG.style });
+      } else if (section === 'label') {
+        updateConfig({ label: DEFAULT_CONFIG.label });
       } else if (section === 'colors') {
         updateConfig({ 
-          dots: { ...config.dots, color: DEFAULT_CONFIG.dots.color, gradient: DEFAULT_CONFIG.dots.gradient },
+          dots: { ...config.dots, color: DEFAULT_CONFIG.dots.color },
           background: DEFAULT_CONFIG.background,
-          frame: { ...config.frame, backgroundColor: DEFAULT_CONFIG.frame.backgroundColor, borderColor: DEFAULT_CONFIG.frame.borderColor, color: DEFAULT_CONFIG.frame.color }
+          label: { ...config.label, color: DEFAULT_CONFIG.label.color }
         });
       }
       setToast(`Reset ${section} settings`);
     }
     setTimeout(() => setToast(null), 3000);
   };
-  
+
   const qrContainerRef = useCallback((node: HTMLDivElement | null) => {
     if (node !== null && qrInstance) {
-      console.log("Appending QR instance to node");
       node.innerHTML = '';
       qrInstance.append(node);
     }
   }, [qrInstance]);
 
-  const qrStyling = useRef<QRCodeStyling | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // --- Persistence & Initialization ---
+  useEffect(() => {
+    localStorage.setItem('lucidqr_draft', JSON.stringify(config));
+  }, [config]);
 
-  // --- Initialization ---
   useEffect(() => {
     const savedHistory = localStorage.getItem('lucidqr_history');
     if (savedHistory) setHistory(JSON.parse(savedHistory));
+
+    const savedConfig = localStorage.getItem('lucidqr_draft');
+    if (savedConfig) {
+      try {
+        const parsed = JSON.parse(savedConfig);
+        setConfig(parsed);
+      } catch (e) {
+        console.error("Failed to load saved draft", e);
+      }
+    }
     
-    // Theme is now forced to dark
     document.documentElement.classList.add('dark');
 
-    // Migration: If the default color is still the old blue, reset it to white for Aura theme
-    setConfig(prev => {
-      if (prev.dots.color === '#061fd0') {
-        return {
-          ...prev,
-          dots: { ...prev.dots, color: '#ffffff' },
-          corners: { ...prev.corners, color: '#ffffff' },
-          frame: { ...prev.frame, color: '#ffffff' },
-          background: { ...prev.background, transparent: true }
-        };
-      }
-      return prev;
+    // Engine Setup
+    const instance = new QRCodeStyling({
+      width: 320,
+      height: 320,
+      data: config.content,
+      margin: config.margin,
+      qrOptions: { typeNumber: 0, mode: 'Byte', errorCorrectionLevel: config.errorCorrectionLevel },
+      imageOptions: { crossOrigin: 'anonymous', margin: 10 }
     });
 
-      // Initial Engine Setup with 404 Resilience
-      const instance = new QRCodeStyling({
-        width: 320,
-        height: 320,
-        data: config.content,
-        margin: config.margin,
-        qrOptions: { typeNumber: 0, mode: 'Byte', errorCorrectionLevel: config.errorCorrectionLevel },
-        imageOptions: { crossOrigin: 'anonymous', margin: 10 }
-      });
-
-      console.log("QR Engine Initialized: Setting instance...");
-      qrStyling.current = instance;
-      setQrInstance(instance);
-
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setIsAuthReady(true);
-      if (u) {
-        // Create/Update user doc
-        const userDoc = doc(db, 'users', u.uid);
-        setDoc(userDoc, {
-          uid: u.uid,
-          email: u.email,
-          displayName: u.displayName,
-          photoURL: u.photoURL,
-          createdAt: serverTimestamp()
-        }, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, `users/${u.uid}`));
-      }
-    });
-
-    return () => unsubscribe();
+    qrStyling.current = instance;
+    setQrInstance(instance);
   }, []);
 
-  // --- Sync History from Firestore ---
-  useEffect(() => {
-    if (!user || !isAuthReady) return;
-
-    const q = query(
-      collection(db, 'qrcodes'),
-      where('userId', '==', user.uid),
-      orderBy('timestamp', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as HistoryEntry));
-      setHistory(docs);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'qrcodes'));
-
-    return () => unsubscribe();
-  }, [user, isAuthReady]);
-
-  // --- Smart Content Detection ---
+  // --- Logic ---
   const detectContentType = useCallback((val: string) => {
     if (val.startsWith('http://') || val.startsWith('https://')) return 'url';
     if (/^\+?[\d\s\-\(\)]{7,}$/.test(val)) return 'phone';
@@ -229,19 +237,19 @@ export default function App() {
     const detected = detectContentType(val);
     if (detected && detected !== config.type) {
       setConfig(prev => ({ ...prev, type: detected as QRType, content: val }));
-      setToast(`Switched to ${detected.toUpperCase()} mode`);
+      setToast(`Type: ${detected.toUpperCase()}`);
       setTimeout(() => setToast(null), 2000);
     } else {
       updateConfig({ content: val });
     }
   };
 
-  // --- Update QR ---
   useEffect(() => {
     if (!qrInstance) return;
     
     setIsRegenerating(true);
     const timer = setTimeout(() => {
+      setUpdateKey(prev => prev + 1);
       try {
         const dotsOptions: any = {
           color: config.dots.color,
@@ -262,10 +270,12 @@ export default function App() {
         }
 
         qrInstance.update({
-          data: config.content || 'https://lucidqr.com',
+          width: config.size,
+          height: config.size,
+          data: config.content || 'https://qraura.io',
           dotsOptions,
           backgroundOptions: { 
-            color: (config.skin && config.skin !== 'none') ? 'transparent' : (config.background.transparent ? 'transparent' : config.background.color) 
+            color: config.background.transparent ? 'transparent' : config.background.color 
           },
           cornersSquareOptions: { 
             type: config.corners.type as any, 
@@ -277,6 +287,9 @@ export default function App() {
             color: config.corners.color,
             gradient: dotsOptions.gradient 
           },
+          qrOptions: {
+            errorCorrectionLevel: config.errorCorrectionLevel
+          },
           image: (config.logo?.src === '/logo.png') ? undefined : config.logo?.src,
           imageOptions: {
             hideBackgroundDots: config.logo?.hideBackgroundDots,
@@ -285,47 +298,15 @@ export default function App() {
             crossOrigin: 'anonymous'
           }
         });
-        console.log("QR Engine Updated Successfully");
       } catch (err) {
-        console.error("QR Styling Update Failed", err);
+        console.error("QR Update Failed", err);
       } finally {
         setIsRegenerating(false);
-        console.log("Regeneration state finished");
       }
     }, 150);
 
     return () => clearTimeout(timer);
   }, [config, qrInstance]);
-
-  // --- Actions ---
-  const handleFileUpload = async (file: File) => {
-    if (!user) {
-      setToast('Please login to upload files');
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setToast('File too large (max 10MB)');
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const storageRef = ref(storage, `uploads/${user.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      handleContentChange(url);
-      setToast('File uploaded to Aura Cloud');
-    } catch (err) {
-      console.error(err);
-      setToast('Upload failed');
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => setToast(null), 3000);
-    }
-  };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -338,201 +319,67 @@ export default function App() {
     }
   };
 
-  const handleExport = async (ext: 'png' | 'svg', customSize?: number) => {
+  const handleExport = async (format: 'png' | 'svg' | 'pdf' | 'low-png', quality: number = 1) => {
     if (!previewRef.current) return;
-    
     setIsExporting(true);
-    setToast('Generating high-res export...');
+    setToast(`Exporting ${format.toUpperCase()}...`);
 
     try {
-      if (ext === 'svg' && qrStyling.current) {
-        // SVG export still uses the engine because html2canvas produces raster
-        const size = customSize || config.size;
-        await qrStyling.current.update({ width: size, height: size });
-        qrStyling.current.download({ name: `lucid-qr-${Date.now()}`, extension: 'svg' });
+      const scale = quality * 2; // Base scale for HD
+      
+      if (format === 'svg' && qrStyling.current) {
+        qrStyling.current.download({ name: `qraura-${Date.now()}`, extension: 'svg' });
+      } else if (format === 'pdf') {
+        const canvas = await html2canvas(previewRef.current, { scale, useCORS: true, backgroundColor: null });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [canvas.width / scale, canvas.height / scale] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / scale, canvas.height / scale);
+        pdf.save(`qraura-${Date.now()}.pdf`);
       } else {
-        // PNG export captures the ENTIRE style using html2canvas
-        const canvas = await html2canvas(previewRef.current, {
-          scale: 4, // High resolution
-          useCORS: true,
+        const canvas = await html2canvas(previewRef.current, { 
+          scale: format === 'low-png' ? 1 : scale, 
+          useCORS: true, 
           backgroundColor: null,
-          logging: false,
-          onclone: (clonedDoc) => {
-            const elements = clonedDoc.getElementsByTagName('*');
-            for (let i = 0; i < elements.length; i++) {
-              const el = elements[i] as HTMLElement;
-              const style = window.getComputedStyle(el);
-              const isUnsupported = (val: string) => val.includes('oklch') || val.includes('oklab');
-              
-              if (isUnsupported(style.boxShadow || '')) el.style.boxShadow = 'none';
-              
-              if (isUnsupported(style.color || '')) {
-                el.style.color = '#ffffff';
-              }
-
-              // CRITICAL: Force background capture for skins
-              if (el.style.background || el.style.backgroundImage) {
-                // Keep the inline styles we set in React (they use hex)
-              } else if (isUnsupported(style.backgroundColor || '')) {
-                const classList = el.className;
-                if (classList.includes('bg-white')) el.style.backgroundColor = '#ffffff';
-                else if (classList.includes('bg-black')) el.style.backgroundColor = '#000000';
-                else if (classList.includes('bg-primary')) el.style.backgroundColor = '#00ffcc';
-                else el.style.backgroundColor = 'transparent';
-              }
-
-              if (isUnsupported(style.borderColor || '')) {
-                if (el.className.includes('border-primary')) el.style.borderColor = '#00ffcc';
-                else el.style.borderColor = 'transparent';
-              }
-              
-              // Remove any oklch from pseudo elements if possible (though html2canvas usually ignores them)
-            }
-          }
+          imageTimeout: 5000
         });
-
         const link = document.createElement('a');
-        link.download = `aura-qr-${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
+        link.download = `qraura-${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png', format === 'low-png' ? 0.6 : 1.0);
         link.click();
       }
-
-      // Save to History (using the engine for the thumbnail to keep it small)
-      if (qrStyling.current) {
-        const blob = await qrStyling.current.getRawData('png') as Blob;
-        if (blob) {
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          reader.onloadend = async () => {
-            const thumbnail = reader.result as string;
-            if (user) {
-              await addDoc(collection(db, 'qrcodes'), {
-                userId: user.uid,
-                timestamp: Date.now(),
-                contentType: config.type,
-                value: config.content,
-                thumbnail,
-                config: JSON.parse(JSON.stringify(config))
-              });
-            }
-          };
-        }
-      }
-      
-      setToast('Export complete!');
+      setToast('Saved successfully');
     } catch (err) {
-      console.error("Export failed", err);
-      setToast('Export failed. Check CORS or network.');
+      console.error(err);
+      setToast('Export failed');
     } finally {
       setIsExporting(false);
       setTimeout(() => setToast(null), 3000);
-      // Reset preview size in engine if we touched it
-      if (ext === 'svg') {
-        setTimeout(() => qrStyling.current?.update({ width: 320, height: 320 }), 500);
-      }
     }
   };
 
   const handleCopy = async () => {
     if (!previewRef.current) return;
-    setToast('Preparing high-res copy...');
-    
+    setToast('Processing Copy...');
     try {
-      const canvas = await html2canvas(previewRef.current, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: null,
-        logging: false,
-        onclone: (clonedDoc) => {
-          const elements = clonedDoc.getElementsByTagName('*');
-          for (let i = 0; i < elements.length; i++) {
-            const el = elements[i] as HTMLElement;
-            const style = window.getComputedStyle(el);
-            const isUnsupported = (val: string) => val.includes('oklch') || val.includes('oklab');
-
-            if (isUnsupported(style.boxShadow || '')) el.style.boxShadow = 'none';
-            
-            if (isUnsupported(style.color || '')) {
-              el.style.color = '#ffffff';
-            }
-
-            if (el.style.background || el.style.backgroundImage) {
-              // Keep our hex-based gradients
-            } else if (isUnsupported(style.backgroundColor || '')) {
-              const classList = el.className;
-              if (classList.includes('bg-white')) el.style.backgroundColor = '#ffffff';
-              else if (classList.includes('bg-black')) el.style.backgroundColor = '#000000';
-              else el.style.backgroundColor = 'transparent';
-            }
-
-            if (isUnsupported(style.borderColor || '')) {
-              if (el.className.includes('border-primary')) el.style.borderColor = '#00ffcc';
-              else el.style.borderColor = '#ffffff';
-            }
-          }
-        }
-      });
-
+      const canvas = await html2canvas(previewRef.current, { scale: 3, useCORS: true, backgroundColor: null });
       canvas.toBlob(async (blob) => {
         if (blob) {
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
-          setToast('Styles copied to clipboard!');
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          setToast('Copied to Clipboard');
         }
-      }, 'image/png');
+      });
     } catch (err) {
-      console.error("Copy failed", err);
-      setToast('Copy failed.');
+      setToast('Copy failed');
     } finally {
       setTimeout(() => setToast(null), 3000);
     }
   };
 
-  const updateConfig = (updates: Partial<QRConfig>) => {
-    setConfig(prev => {
-      const next = { ...prev, ...updates };
-      
-      // Auto-detect type if generic content changes
-      if (updates.content && !updates.type) {
-        const detectedType = detectContentType(updates.content);
-        if (detectedType && detectedType !== prev.type) {
-          next.type = detectedType as QRType;
-        }
-      }
-
-      // Auto-generate content based on specialized fields
-      if (next.type === 'wifi') {
-        next.content = `WIFI:S:${next.ssid || ''};T:${next.encryption || 'WPA'};P:${next.password || ''};H:${next.hidden ? 'true' : 'false'};;`;
-      } else if (next.type === 'phone') {
-        next.content = `tel:${next.phone || ''}`;
-      } else if (next.type === 'email') {
-        const params = new URLSearchParams();
-        if (next.subject) params.append('subject', next.subject);
-        if (next.body) params.append('body', next.body);
-        const query = params.toString() ? `?${params.toString()}` : '';
-        next.content = `mailto:${next.email || ''}${query}`;
-      } else if (next.type === 'vcard') {
-        next.content = `BEGIN:VCARD\nVERSION:3.0\nN:${next.lastName || ''};${next.firstName || ''}\nFN:${next.firstName || ''} ${next.lastName || ''}\nORG:${next.organization || ''}\nTEL;TYPE=WORK,VOICE:${next.vCardPhone || ''}\nEMAIL;TYPE=PREF,INTERNET:${next.vCardEmail || ''}\nURL:${next.vCardUrl || ''}\nEND:VCARD`;
-      }
-
-      return next;
-    });
-  };
-  const clearHistory = async () => {
-    if (user) {
-      try {
-        const q = query(collection(db, 'qrcodes'), where('userId', '==', user.uid));
-        const snapshot = await getDocs(q);
-        const batch: Promise<any>[] = [];
-        snapshot.docs.forEach(d => batch.push(deleteDoc(doc(db, 'qrcodes', d.id))));
-        await Promise.all(batch);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, 'qrcodes');
-      }
-    } else {
-      setHistory([]);
-      localStorage.removeItem('lucidqr_history');
-    }
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem('lucidqr_history');
+    setToast('History cleared');
+    setTimeout(() => setToast(null), 3000);
   };
 
   // --- Render Helpers ---
@@ -540,381 +387,284 @@ export default function App() {
     <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-4 mt-8 first:mt-0 border-b border-slate-800 pb-2">
       <span>{title}</span>
       {onReset && (
-        <button 
-          onClick={onReset}
-          className="p-1 hover:bg-white/5 rounded-md transition-colors text-slate-500 hover:text-primary group"
-          title="Reset Section"
-        >
-          <RotateCcw size={12} className="group-active:rotate-[-90deg] transition-transform" />
-        </button>
+        <Tooltip content={`Reset ${title} to default`}>
+          <button 
+            onClick={onReset}
+            className="p-1 hover:bg-white/5 rounded-md transition-colors text-slate-500 hover:text-primary group"
+            title="Reset Section"
+          >
+            <RotateCcw size={12} className="group-active:rotate-[-90deg] transition-transform" />
+          </button>
+        </Tooltip>
       )}
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-black dark font-sans">
-      {/* Header */}
-      <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 bg-black z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-slate-800">
+    <div className="flex flex-col h-screen bg-black dark font-sans overflow-hidden">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleLogoUpload} 
+        className="hidden" 
+        accept="image/*"
+      />
+      {/* Floating Mini Preview (Mobile Only) */}
+      <AnimatePresence>
+        {(!isLandscape && scrollPosition > 150) && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0, y: 50 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0, opacity: 0, y: 50 }}
+            onClick={() => setShowFullPreview(true)}
+            className="fixed bottom-24 right-4 z-[100] w-16 h-16 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.4)] border border-white/20 overflow-hidden cursor-pointer active:scale-95 transition-transform p-2"
+          >
+            <div className="w-full h-full relative">
+              <div ref={node => {
+                if (node && qrInstance) {
+                  node.innerHTML = '';
+                  const clone = new QRCodeStyling({
+                    ...qrInstance._options,
+                    width: 120,
+                    height: 120,
+                  });
+                  clone.append(node);
+                }
+              }} className="w-full h-full flex items-center justify-center scale-[0.4]" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Full Preview Modal */}
+      <AnimatePresence>
+        {showFullPreview && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-3xl flex items-center justify-center p-8"
+            onClick={() => setShowFullPreview(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.8, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, y: 20 }}
+              className="relative w-full max-w-sm aspect-square bg-white rounded-[2rem] p-10 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setShowFullPreview(false)}
+                className="absolute -top-12 right-0 text-white flex items-center gap-2 text-xs font-black uppercase tracking-widest"
+              >
+                Close <RotateCcw size={14} />
+              </button>
+              <div ref={node => {
+                if (node && qrInstance) {
+                  node.innerHTML = '';
+                  const modalQr = new QRCodeStyling({
+                    ...qrInstance._options,
+                    width: 320,
+                    height: 320,
+                  });
+                  modalQr.append(node);
+                }
+              }} className="w-full h-full flex items-center justify-center" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header - Transparent & Sleek */}
+      <header className="h-14 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-black/80 backdrop-blur-md z-50">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-white/10">
             <img src="/logo.png" alt="QR Aura" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div className="flex flex-col">
-            <LiquidMetalLogo className="text-xl font-black tracking-tighter leading-none">
+            <LiquidMetalLogo className="text-lg font-black tracking-tighter leading-none">
               QR Aura
             </LiquidMetalLogo>
-            <span className="text-[9px] font-bold text-primary/80 uppercase tracking-[0.2em] mt-0.5">
-              <TypewriterText text="Generate the Invisible • Craft Your Aura" delay={1.5} repeat={true} />
-            </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => resetToDefault()}
-            className="h-9 px-4 rounded-xl border border-slate-800 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:bg-white/5 hover:text-white transition-all flex items-center gap-2"
-          >
-            <RotateCcw size={14} />
-            Restore Defaults
-          </button>
-
-          {!isAuthReady ? (
-            <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-zinc-900 animate-pulse" />
-          ) : user ? (
-            <div className="flex items-center gap-3 pl-3 border-l border-slate-200 dark:border-zinc-800">
-              <div className="flex flex-col items-end hidden sm:flex">
-                <span className="text-[10px] font-bold text-slate-900 dark:text-white leading-none">{user.displayName}</span>
-                <button 
-                  onClick={() => signOut(auth)}
-                  className="text-[9px] font-black text-primary uppercase tracking-widest mt-1 hover:opacity-70 transition-opacity"
-                >
-                  Logout
-                </button>
-              </div>
-              <img src={user.photoURL || ''} alt="avatar" className="w-10 h-10 rounded-full border border-slate-200 dark:border-zinc-800" referrerPolicy="no-referrer" />
-            </div>
-          ) : (
+        <div className="flex items-center gap-2">
+          <Tooltip content="View design history" direction="bottom">
             <button 
-              onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
-              className="h-10 px-6 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
+              onClick={() => setShowHistory(true)}
+              className="h-8 w-8 rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 hover:text-primary transition-all flex items-center justify-center relative"
             >
-              Sign In
+              <History size={14} />
+              {history.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full shadow-[0_0_5px_rgba(0,255,204,0.5)]" />
+              )}
             </button>
-          )}
+          </Tooltip>
+
+          <Tooltip content="Reset all settings to default" direction="bottom">
+            <button 
+              onClick={() => resetToDefault()}
+              className="h-8 px-3 rounded-lg border border-white/10 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:bg-white/5 hover:text-white transition-all flex items-center gap-2"
+            >
+              <RotateCcw size={12} />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+          </Tooltip>
         </div>
       </header>
 
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        {/* Preview Panel - First on Mobile */}
-        <main className="flex-1 bg-black p-6 md:p-12 flex flex-col items-center justify-center overflow-y-auto order-first md:order-none relative">
-          <FloatingParticles />
-          
-          <AnimatePresence>
-            {toast && (
-              <motion.div 
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="absolute top-8 bg-slate-900 text-white px-4 py-2 rounded-full text-xs font-bold shadow-xl z-50 flex items-center gap-2"
-              >
-                <CheckCircle2 size={14} className="text-green-400" />
-                {toast}
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* Main Content Area: Responsive Grid */}
+      <div className={cn(
+        "flex-1 flex overflow-hidden",
+        isLandscape ? "flex-row" : "flex-col md:flex-row"
+      )}>
+        
+        {/* Sticky Preview Section (Mobile Top / Desktop Right / Landscape Left) */}
+        <main className={cn(
+          "bg-black flex flex-col relative shrink-0 z-20 border-white/5",
+          isLandscape 
+            ? "w-2/5 border-r" 
+            : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l"
+        )}>
+          {/* Fixed Height / Aspect Ratio Preview Container */}
+          <div className={cn(
+            "flex-1 flex flex-col items-center justify-center p-4 relative z-10",
+            !isLandscape && "min-h-[340px] md:min-h-0 md:p-8"
+          )}>
+            <AnimatePresence>
+              {toast && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="absolute top-4 bg-slate-900 border border-white/10 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-2xl z-50 flex items-center gap-2"
+                >
+                  <CheckCircle2 size={12} className="text-primary" />
+                  {toast}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <div className="w-full max-w-md flex flex-col items-center">
-            {/* QR Container */}
-            <div className="relative group">
-              <div className="absolute -inset-4 bg-primary/10 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                         <motion.div 
+            {/* The Actual QR Stage */}
+            <div className={cn(
+              "w-full flex items-center justify-center relative",
+              isLandscape ? "max-w-full" : "max-w-[min(90vw,450px)] aspect-square"
+            )}>
+              {/* Subtle Glow Backdrop */}
+              <div className="absolute inset-0 bg-primary/10 blur-[100px] rounded-full scale-110 pointer-events-none opacity-50" />
+              
+              <motion.div 
                 ref={previewRef}
+                key={updateKey}
                 className={cn(
-                  "relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden"
+                  "relative transition-all duration-500 flex flex-col items-center justify-center p-6 md:p-10 overflow-visible",
+                  "max-w-full max-h-full w-auto h-auto",
+                  config.style === 'minimal' && "bg-white rounded-3xl shadow-xl",
+                  config.style === 'soft-glow' && "bg-white rounded-[40px] shadow-[0_20px_60px_rgba(0,255,204,0.1)]",
+                  config.style === 'glass' && "bg-white/30 backdrop-blur-3xl border border-white/30 rounded-3xl shadow-2xl",
+                  config.style === 'paper' && "bg-[#fefae0] rounded-sm shadow-[0_4px_10px_rgba(0,0,0,0.1)] border border-black/5",
+                  config.style === 'matte-dark' && "bg-[#111111] rounded-[2.5rem] border border-white/5 shadow-2xl",
+                  config.style === 'subtle-gradient' && "bg-white rounded-3xl shadow-2xl border border-slate-100"
                 )}
                 style={{
-                  backgroundColor: config.frame.style !== 'none' ? config.frame.backgroundColor : 'transparent',
-                  borderColor: config.frame.style !== 'none' ? config.frame.borderColor : 'transparent',
-                  borderWidth: config.frame.style !== 'none' ? `${config.frame.borderWidth}px` : '0px',
-                  borderRadius: config.frame.style !== 'none' 
-                    ? `${config.frame.borderRadius}px`
-                    : '0px',
-                  padding: config.frame.style !== 'none' ? `${config.frame.padding}px` : '0px',
-                  boxShadow: config.frame.shadowIntensity > 0 
-                    ? `0 ${config.frame.padding / 2}px ${config.frame.padding}px -${config.frame.padding / 4}px ${config.frame.shadowColor}${Math.round(config.frame.shadowIntensity * 255).toString(16).padStart(2, '0')}` 
-                    : 'none'
+                  backgroundColor: config.style === 'paper' ? '#fefae0' : (config.style === 'matte-dark' ? '#111111' : (config.style === 'minimal' || config.style === 'soft-glow' || config.style === 'subtle-gradient' ? config.background.color : undefined)),
+                  backgroundImage: config.style === 'paper' ? 'url("https://www.transparenttextures.com/handmade-paper.png")' : undefined
                 }}
               >
-                <div 
-                  className={cn(
-                    "relative w-[280px] h-[280px] md:w-[340px] md:h-[340px] flex items-center justify-center rounded-2xl overflow-hidden shadow-2xl",
-                    (!config.skin || config.skin === 'none') && "bg-white"
-                  )}
-                  style={{
-                    background: config.skin === 'cherry' ? 'linear-gradient(135deg, #fff5f7 0%, #ffccd5 100%)' :
-                               config.skin === 'wave' ? 'linear-gradient(135deg, #f0f9ff 0%, #7dd3fc 100%)' :
-                               config.skin === 'aurora' ? 'linear-gradient(45deg, #00ffcc 0%, #00c6ff 50%, #0072ff 100%)' :
-                               config.skin === 'cyberpunk' ? 'linear-gradient(135deg, #020617 0%, #1e1b4b 100%)' :
-                               config.skin === 'midnight' ? 'linear-gradient(180deg, #0f172a 0%, #020617 100%)' :
-                               config.skin === 'sunset' ? 'linear-gradient(180deg, #ff7e5f 0%, #feb47b 100%)' :
-                               config.skin === 'forest' ? 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)' :
-                               undefined
-                  }}
-                >
-                  {/* Skin Background Effects */}
-                  {config.skin === 'cherry' && (
-                    <div className="absolute inset-0 pointer-events-none opacity-40">
-                      {[1,2,3,4,5,6,7,8].map((i) => (
-                        <motion.div
-                          key={i}
-                          animate={{ 
-                            y: [0, 20, 0], 
-                            rotate: [0, 45, 0],
-                            opacity: [0.2, 0.5, 0.2]
-                          }}
-                          transition={{ repeat: Infinity, duration: 4 + i, delay: i * 0.5 }}
-                          className="absolute text-pink-400"
-                          style={{ top: `${(i*13)%100}%`, left: `${(i*17)%100}%` }}
-                        >
-                          <Flower2 size={24} />
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                  {config.skin === 'cyberpunk' && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,204,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,204,0.05)_1px,transparent_1px)] bg-[size:20px_20px]" />
-                      <motion.div 
-                        animate={{ opacity: [0.1, 0.2, 0.1] }}
-                        transition={{ duration: 0.1, repeat: Infinity }}
-                        className="absolute inset-0 bg-[#f0f]/5"
-                      />
-                    </div>
-                  )}
-                  {config.skin === 'wave' && (
-                    <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden">
-                      <motion.div 
-                        animate={{ y: [0, -10, 0], x: [-5, 5, -5] }} 
-                        transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
-                        className="absolute inset-0 bg-gradient-to-t from-blue-400/20 to-transparent"
-                      >
-                         <Waves className="absolute bottom-0 w-full h-20 opacity-30 text-blue-500" />
-                      </motion.div>
-                    </div>
-                  )}
-                  {config.skin === 'aurora' && (
-                    <div className="absolute inset-0 pointer-events-none">
-                      <motion.div 
-                        animate={{ 
-                          backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'],
-                          opacity: [0.3, 0.6, 0.3]
-                        }}
-                        transition={{ duration: 15, repeat: Infinity }}
-                        className="absolute inset-0 bg-gradient-to-br from-cyan-500/30 via-emerald-500/30 to-blue-500/30 blur-3xl scale-150"
-                      />
-                    </div>
-                  )}
-                  {config.skin === 'midnight' && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(56,189,248,0.1),_transparent_70%)]" />
-                      {[...Array(30)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          animate={{ opacity: [0.2, 0.8, 0.2] }}
-                          transition={{ 
-                            repeat: Infinity, 
-                            duration: 1 + Math.random() * 2,
-                            delay: Math.random() * 2
-                          }}
-                          className="absolute w-0.5 h-0.5 bg-white rounded-full"
-                          style={{ top: `${Math.random() * 100}%`, left: `${Math.random() * 100}%` }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {config.skin === 'sunset' && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                      <motion.div 
-                        animate={{ scale: [1, 1.05, 1] }} 
-                        transition={{ repeat: Infinity, duration: 8 }}
-                        className="absolute top-10 left-10 w-40 h-40 bg-orange-400 blur-[60px] rounded-full opacity-40"
-                      />
-                      <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-orange-600/20 to-transparent" />
-                    </div>
-                  )}
-                  {config.skin === 'forest' && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40">
-                      {[...Array(6)].map((_, i) => (
-                        <Trees 
-                          key={i} 
-                          className="absolute" 
-                          style={{ 
-                            bottom: `${Math.random() * 20}%`, 
-                            left: `${Math.random() * 100}%`,
-                            opacity: 0.3 + Math.random() * 0.5
-                          }} 
-                          size={48 + i * 10} 
-                          color="#1b4332" 
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {/* QR Core Container - Stays mounted to preserve instance reference */}
+                <div className="flex flex-col items-center justify-center w-full h-full">
                   <div 
                     ref={qrContainerRef} 
                     className={cn(
-                      "w-full h-full flex items-center justify-center transition-opacity duration-200 relative z-20",
-                      (isRegenerating || !config.content) ? "opacity-30 blur-sm" : "opacity-100" // Reduced hiding during regen to prove it's there
+                      "transition-all duration-300 relative z-20 aspect-square flex items-center justify-center qr-render-container",
+                      isLandscape ? "w-[160px] h-[160px]" : "w-[200px] h-[200px] xs:w-[240px] xs:h-[240px] sm:w-[300px] sm:h-[300px]",
+                      (isRegenerating || !config.content) ? "opacity-30 blur-md scale-95" : "opacity-100 scale-100"
                     )} 
                   />
 
-                  <AnimatePresence>
-                    {isRegenerating && (
-                      <motion.div 
-                        key="skeleton"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 bg-slate-100 dark:bg-zinc-900 animate-pulse flex items-center justify-center z-10"
-                      >
-                        <QrCode className="text-slate-300 dark:text-zinc-700 w-20 h-20" />
-                      </motion.div>
-                    )}
-                    {!config.content && !isRegenerating && (
-                      <motion.div 
-                        key="empty"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-400 z-10"
-                      >
-                        <QrCode size={48} strokeWidth={1} />
-                        <p className="text-xs font-medium">Enter content to generate</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {config.frame.text && (
-                  <div className="mt-2 w-full text-center py-1 px-4">
-                    <p 
-                      className="font-black tracking-tight uppercase"
-                      style={{ 
-                        fontSize: `${config.frame.fontSize}px`,
-                        color: config.frame.color,
-                        fontFamily: config.frame.fontFamily
-                      }}
+                  {config.label.enabled && config.label.text && (
+                    <motion.div 
+                      layout
+                      className={cn("w-full flex flex-col", isLandscape ? "mt-2" : "mt-5")}
+                      style={{ alignItems: config.label.alignment === 'center' ? 'center' : (config.label.alignment === 'left' ? 'flex-start' : 'flex-end') }}
                     >
-                      {config.frame.text}
-                    </p>
-                  </div>
-                )}
+                      <p 
+                        className="max-w-full break-words"
+                        style={{ 
+                          fontSize: `${isLandscape ? config.label.fontSize * 0.7 : config.label.fontSize}px`,
+                          color: config.label.color,
+                          fontFamily: `'${config.label.fontFamily}', sans-serif`,
+                          fontWeight: config.label.fontWeight,
+                          letterSpacing: `${config.label.letterSpacing}px`,
+                          textAlign: config.label.alignment as any,
+                          lineHeight: 1.1
+                        }}
+                      >
+                        {config.label.text}
+                      </p>
+                    </motion.div>
+                  )}
+                </div>
               </motion.div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="mt-12 w-full max-w-2xl mx-auto space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="relative group/export">
-                  <ConicButton 
-                    borderColor={config.dots.color}
-                    className="h-14 w-full rounded-2xl shadow-lg shadow-primary/25"
-                  >
-                    <Download size={20} className="text-slate-900 dark:text-white" /> 
-                    <span className="font-bold ml-2 text-slate-900 dark:text-white">Download</span>
-                    <ChevronDown size={16} className="opacity-60 ml-1 text-slate-900 dark:text-white" />
-                  </ConicButton>
-                  
-                  {/* Dropdown menu */}
-                  <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-black border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl py-2 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all z-[60] overflow-hidden translate-y-2 group-hover/export:translate-y-0">
-                    <button 
-                      onClick={() => handleExport('png')}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
-                    >
-                      <div className="flex flex-col">
-                        <span>PNG (Standard)</span>
-                        <span className="text-[10px] opacity-50 uppercase tracking-tighter">Solid Background</span>
-                      </div>
-                      <span className="text-[10px] opacity-70 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded-md">{config.size}px</span>
-                    </button>
-                    <button 
-                      onClick={() => handleExport('png', 1024)}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
-                    >
-                      <div className="flex flex-col">
-                        <span>PNG (HD)</span>
-                        <span className="text-[10px] opacity-50 uppercase tracking-tighter">Premium Resolution</span>
-                      </div>
-                      <span className="text-[10px] opacity-70 bg-primary/10 text-primary px-2 py-1 rounded-md">1024px</span>
-                    </button>
-                    <div className="h-px bg-slate-100 dark:bg-zinc-800 my-1 mx-4" />
-                    <button 
-                      onClick={() => handleExport('svg')}
-                      className="w-full px-4 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900 dark:text-white flex items-center justify-between transition-colors"
-                    >
-                      <div className="flex flex-col">
-                        <span>SVG (Vector)</span>
-                        <span className="text-[10px] opacity-50 uppercase tracking-tighter">Infinite Polish</span>
-                      </div>
-                      <span className="text-[10px] opacity-70 bg-indigo-500/10 text-indigo-500 px-2 py-1 rounded-md">∞</span>
-                    </button>
-                  </div>
-                </div>
-
-                <ConicButton 
-                  onClick={handleCopy}
-                  borderColor="#334155"
-                  className="h-14 rounded-2xl shadow-sm"
-                >
-                  <Copy size={20} className="text-slate-900 dark:text-white" />
-                  <span className="font-bold ml-2 text-slate-900 dark:text-white">Copy Image</span>
-                </ConicButton>
-              </div>
-              <p className="text-[10px] text-center text-slate-400 font-medium">
-                High resolution exports may take a few seconds to process.
-              </p>
             </div>
           </div>
         </main>
 
-        {/* Config Sidebar */}
-        <aside className="w-full md:w-[400px] bg-white dark:bg-black border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
-          {/* Main Tab Area */}
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+        {/* Sidebar / Controls Section */}
+        <aside className={cn(
+          "flex flex-col bg-[#050505] overflow-hidden border-white/5",
+          isLandscape 
+            ? "flex-1 border-l" 
+            : "w-full md:w-[400px] lg:w-[450px] flex-1 md:flex-none border-t md:border-t-0 md:border-l"
+        )}>
+          
+          <div className="shrink-0 z-40 bg-[#050505] border-b border-white/5 shadow-2xl px-4 py-4 md:px-6 md:py-6">
             <SmoothTabs 
               tabs={[
-                { id: 'content', icon: Type, label: 'Content' },
-                { id: 'design', icon: Palette, label: 'Design' },
-                { id: 'skins', icon: Sparkles, label: 'Skins' },
-                { id: 'colors', icon: Palette, label: 'Colors' },
-                { id: 'logo', icon: ImageIcon, label: 'Logo' },
-                { id: 'label', icon: Layout, label: 'Frame' }
-              ]} 
-              activeTab={activeTab} 
-              onChange={(id) => setActiveTab(id as any)} 
+                { id: 'content', label: 'Data', icon: LinkIcon, tooltip: 'Configure QR Content' },
+                { id: 'design', label: 'Engine', icon: Square, tooltip: 'QR Pattern & Shapes' },
+                { id: 'styles', label: 'Theme', icon: Sparkles, tooltip: 'Card Visual Themes' },
+                { id: 'colors', label: 'Palette', icon: Palette, tooltip: 'Brand Color Palette' },
+                { id: 'logo', label: 'Logo', icon: ImageIcon, tooltip: 'Custom Branding' },
+                { id: 'label', label: 'Font', icon: FontIcon, tooltip: 'Footer Typography' },
+              ]}
+              activeTab={activeTab}
+              onChange={(id) => {
+                setActiveTab(id as any);
+                // On mobile, scroll the content into view slightly if it's the first click
+                if (!isLandscape && window.innerWidth < 768) {
+                  document.getElementById('tab-content-area')?.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-            <AnimatePresence mode="wait">
+          <div 
+            id="tab-content-area"
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto no-scrollbar overscroll-contain p-6 pb-24 space-y-8"
+          >
+            <AnimatePresence>
               {activeTab === 'content' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
                   <SectionHeader title="Content Type" onReset={() => updateConfig({ type: DEFAULT_CONFIG.type })} />
                   <div className="grid grid-cols-3 gap-2">
                     {QR_TYPES.map(type => {
-                      const Icon = { Link: LinkIcon, Type, Wifi, Mail, Phone, User, FileText, Image: ImageIcon }[type.icon] as any;
+                      const Icon = { Link: LinkIcon, Type, Wifi, Mail, Phone, User }[type.icon] as any;
                       return (
-                        <button
-                          key={type.id}
-                          onClick={() => updateConfig({ type: type.id as QRType })}
-                          className={cn(
-                            "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all min-h-[72px]",
-                            config.type === type.id 
-                              ? "border-primary bg-primary/5 text-primary" 
-                              : "border-slate-800 text-slate-500 hover:border-slate-700"
-                          )}
-                        >
-                          <Icon size={20} />
-                          <span className="text-[10px] font-bold">{type.label}</span>
-                        </button>
+                        <Tooltip key={type.id} content={`Generate ${type.label} QR`} className="w-full">
+                          <button
+                            onClick={() => updateConfig({ type: type.id as QRType })}
+                            className={cn(
+                              "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all min-h-[72px] w-full",
+                              config.type === type.id 
+                                ? "border-primary bg-primary/5 text-primary" 
+                                : "border-slate-800 text-slate-500 hover:border-slate-700"
+                            )}
+                          >
+                            <Icon size={20} />
+                            <span className="text-[10px] font-bold">{type.label}</span>
+                          </button>
+                        </Tooltip>
                       );
                     })}
                   </div>
@@ -1082,227 +832,200 @@ export default function App() {
                         </InputGroup>
                       </div>
                     )}
-                    {(config.type === 'file' || config.type === 'image') && (
-                      <div className="space-y-4">
-                        <InputGroup label={config.type === 'image' ? "Select Image" : "Select File"}>
-                          <div className="flex flex-col gap-3 py-2">
-                            <div 
-                              onClick={() => {
-                                if (!user) {
-                                  signInWithPopup(auth, new GoogleAuthProvider());
-                                  return;
-                                }
-                                const input = document.createElement('input');
-                                input.type = 'file';
-                                input.accept = config.type === 'image' ? 'image/*' : '*/*';
-                                input.onchange = (e) => {
-                                  const file = (e.target as HTMLInputElement).files?.[0];
-                                  if (file) handleFileUpload(file);
-                                };
-                                input.click();
-                              }}
-                              className="border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all group"
-                            >
-                              <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-zinc-900 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                {isUploading ? (
-                                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  <Upload size={24} className="text-slate-400 dark:text-zinc-500 group-hover:text-primary" />
-                                )}
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm font-bold dark:text-white">{isUploading ? "Uploading..." : "Click to upload"}</p>
-                                <p className="text-[10px] text-slate-400 mt-1">Maximum file size: 10MB</p>
-                              </div>
-                            </div>
-                            
-                            <div className="relative">
-                              <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-slate-100 dark:border-zinc-800" />
-                              </div>
-                              <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400">
-                                <span className="bg-white dark:bg-black px-2 tracking-widest">Or enter link</span>
-                              </div>
-                            </div>
-                            
-                            <input 
-                              className="w-full h-11 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl px-4 text-sm outline-none dark:text-white"
-                              placeholder={config.type === 'image' ? "https://example.com/image.png" : "https://example.com/file.pdf"}
-                              value={config.content}
-                              onChange={(e) => handleContentChange(e.target.value)}
-                            />
-                          </div>
-                        </InputGroup>
-                        <p className="text-[10px] text-slate-400 font-medium leading-relaxed italic px-1">
-                          Files are hosted on our secure aura cloud. Links generated are private and permanent.
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </motion.div>
               )}
 
               {activeTab === 'design' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Dot Pattern" onReset={() => updateConfig({ dots: { ...config.dots, type: DEFAULT_CONFIG.dots.type } })} />
+                  <SectionHeader title="Dot Pattern" onReset={() => updateConfig({ dots: { type: DEFAULT_CONFIG.dots.type } })} />
                   <div className="grid grid-cols-3 gap-3">
                     {DOT_STYLES.map(style => {
                       const Icon = { Square, Circle, CircleDot, Grid2X2, Diamond, Waves, Flower2 }[style.icon] as any;
                       return (
-                        <button
-                          key={style.id}
-                          onClick={() => updateConfig({ dots: { ...config.dots, type: style.id as DotStyle } })}
-                          className={cn(
-                            "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
-                            config.dots.type === style.id 
-                              ? "border-primary bg-primary/5 text-primary scale-[1.04]" 
-                              : "border-slate-800 text-slate-500 hover:border-slate-700"
-                          )}
-                        >
-                          <Icon size={24} />
-                          <span className="text-[10px] font-bold">{style.label}</span>
-                        </button>
+                        <Tooltip key={style.id} content={`${style.label} Pattern`} className="w-full">
+                          <button
+                            onClick={() => updateConfig({ dots: { type: style.id as DotStyle } })}
+                            className={cn(
+                              "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all w-full",
+                              config.dots.type === style.id 
+                                ? "border-primary bg-primary/5 text-primary scale-[1.04]" 
+                                : "border-slate-800 text-slate-500 hover:border-slate-700"
+                            )}
+                          >
+                            <Icon size={24} />
+                            <span className="text-[10px] font-bold">{style.label}</span>
+                          </button>
+                        </Tooltip>
                       );
                     })}
                   </div>
 
-                  <SectionHeader title="Corner Style" onReset={() => updateConfig({ corners: { ...config.corners, type: DEFAULT_CONFIG.corners.type } })} />
+                  <SectionHeader title="Corner Style" onReset={() => updateConfig({ corners: { type: DEFAULT_CONFIG.corners.type } })} />
                   <div className="grid grid-cols-2 gap-3">
                     {CORNER_STYLES.map(style => (
-                      <button
-                        key={style.id}
-                        onClick={() => updateConfig({ corners: { ...config.corners, type: style.id as CornerStyle } })}
-                        className={cn(
-                          "h-12 rounded-xl border-2 font-bold text-xs transition-all",
-                          config.corners.type === style.id 
-                            ? "border-primary bg-primary/5 text-primary" 
-                            : "border-slate-800 text-slate-500 hover:border-slate-700"
-                        )}
-                      >
-                        {style.label}
-                      </button>
+                      <Tooltip key={style.id} content={`${style.label} corners`} className="w-full">
+                        <button
+                          onClick={() => updateConfig({ corners: { type: style.id as CornerStyle } })}
+                          className={cn(
+                            "h-12 rounded-xl border-2 font-bold text-xs transition-all w-full",
+                            config.corners.type === style.id 
+                              ? "border-primary bg-primary/5 text-primary" 
+                              : "border-slate-800 text-slate-500 hover:border-slate-700"
+                          )}
+                        >
+                          {style.label}
+                        </button>
+                      </Tooltip>
+                    ))}
+                  </div>
+
+                  <SectionHeader title="Output Resolution" onReset={() => updateConfig({ size: DEFAULT_CONFIG.size })} />
+                  <div className="space-y-4">
+                    <Tooltip content="Adjust final image width and height" className="w-full">
+                      <InputGroup label={`Dimensions: ${config.size}x${config.size}px`}>
+                        <div className="flex flex-col gap-3">
+                          <input 
+                            type="range" 
+                            min="128" 
+                            max="2048" 
+                            step="128"
+                            value={config.size} 
+                            onChange={(e) => updateConfig({ size: parseInt(e.target.value) })} 
+                            className="w-full accent-primary h-6" 
+                          />
+                          <div className="grid grid-cols-4 gap-2">
+                            {[256, 512, 1024, 2048].map(sz => (
+                              <button
+                                key={sz}
+                                onClick={() => updateConfig({ size: sz })}
+                                className={cn(
+                                  "py-1.5 rounded-lg border text-[10px] font-bold transition-all",
+                                  config.size === sz 
+                                    ? "border-primary bg-primary/10 text-primary" 
+                                    : "border-slate-800 text-slate-500 hover:border-slate-700"
+                                )}
+                              >
+                                {sz}px
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </InputGroup>
+                    </Tooltip>
+                  </div>
+
+                  <SectionHeader title="Error Correction" onReset={() => updateConfig({ errorCorrectionLevel: DEFAULT_CONFIG.errorCorrectionLevel })} />
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: 'L', label: 'Low', desc: '7%' },
+                      { id: 'M', label: 'Med', desc: '15%' },
+                      { id: 'Q', label: 'Quart', desc: '25%' },
+                      { id: 'H', label: 'High', desc: '30%' }
+                    ].map(level => (
+                      <Tooltip key={level.id} content={`${level.desc} Redundancy`} className="w-full">
+                        <button
+                          onClick={() => updateConfig({ errorCorrectionLevel: level.id as any })}
+                          className={cn(
+                            "flex flex-col items-center justify-center py-2 rounded-xl border-2 transition-all w-full",
+                            config.errorCorrectionLevel === level.id 
+                              ? "border-primary bg-primary/5 text-primary scale-[1.02]" 
+                              : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/50"
+                          )}
+                        >
+                          <span className="text-[10px] font-bold">{level.label}</span>
+                          <span className="text-[8px] opacity-60">{level.desc}</span>
+                        </button>
+                      </Tooltip>
                     ))}
                   </div>
 
                 </motion.div>
               )}
 
-              {activeTab === 'skins' && (
+              {activeTab === 'styles' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Premium Skins" onReset={() => updateConfig({ skin: DEFAULT_CONFIG.skin })} />
+                  <SectionHeader title="Select Layout style" onReset={() => updateConfig({ style: DEFAULT_CONFIG.style })} />
                   <div className="grid grid-cols-2 gap-3">
-                    {SKINS.map(skin => {
-                      const Icon = { Square, Flower2, Waves, Sparkles, Zap, Moon, Sun, Trees }[skin.icon] as any;
+                    {STYLE_PRESETS.map(preset => {
+                      const Icon = { 
+                        Square, Layout, Sparkles, Waves, Moon, Sun, Zap, Music, Trophy, Trees, 
+                        Target, Sunrise, Cloud, Cpu, Settings, Snowflake, Flame, WavesIcon: Waves,
+                        Coffee, Leaf, Diamond, GlassWater, Wind, Ghost
+                      }[preset.icon] || Sparkles;
                       return (
-                        <button
-                          key={skin.id}
-                          onClick={() => updateConfig({ skin: skin.id as any })}
-                          className={cn(
-                            "flex flex-col items-center gap-3 p-6 rounded-xl border-2 transition-all relative overflow-hidden group text-center",
-                            config.skin === skin.id 
-                              ? "border-primary bg-primary/5 text-primary" 
-                              : "border-slate-800 text-slate-500 hover:border-slate-700"
-                          )}
-                        >
-                          <div className={cn(
-                            "absolute inset-0 opacity-10 transition-opacity group-hover:opacity-20",
-                            skin.id === 'cherry' && "bg-[#ffccd5]",
-                            skin.id === 'wave' && "bg-[#7dd3fc]",
-                            skin.id === 'aurora' && "bg-[#00ffcc]",
-                            skin.id === 'cyberpunk' && "bg-[#f0f]",
-                            skin.id === 'midnight' && "bg-slate-900",
-                            skin.id === 'sunset' && "bg-orange-400",
-                            skin.id === 'forest' && "bg-green-600"
-                          )} />
-                          <Icon size={24} className="relative z-10" />
-                          <span className="text-xs font-bold relative z-10">{skin.label}</span>
-                        </button>
+                        <Tooltip key={preset.id} content={`Apply ${preset.label} Style`} className="w-full">
+                          <button
+                            onClick={() => updateConfig({ style: preset.id as QRStyle })}
+                            className={cn(
+                              "group flex flex-col items-center gap-3 p-6 rounded-2xl border-2 transition-all relative overflow-hidden text-center w-full",
+                              config.style === preset.id 
+                                ? "border-primary bg-primary/5 text-primary shadow-[0_0_20px_rgba(0,255,204,0.1)]" 
+                                : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/40"
+                            )}
+                          >
+                            <Icon size={24} className="relative z-10 transition-transform group-hover:scale-110" />
+                            <span className="text-[11px] font-bold relative z-10 uppercase tracking-wider">{preset.label}</span>
+                          </button>
+                        </Tooltip>
                       );
                     })}
                   </div>
-                  <p className="text-[10px] text-slate-400 text-center italic">
-                    Skins apply atmospheric backgrounds to your QR code.
+                  <p className="text-[10px] text-slate-500 text-center italic px-4">
+                    Styles apply decorative backgrounds and effects inside the card. They never resize the QR code.
                   </p>
                 </motion.div>
               )}
 
               {activeTab === 'colors' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Solid Colors" onReset={() => updateConfig({ dots: { ...config.dots, color: DEFAULT_CONFIG.dots.color }, corners: { ...config.corners, color: DEFAULT_CONFIG.corners.color }, background: { ...config.background, color: DEFAULT_CONFIG.background.color } })} />
-                  <div className="space-y-3">
-                    <InputGroup label="Dots & Corners">
-                      <div className="flex items-center gap-3">
-                        <input 
-                          type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-white focus:ring-0 outline-none"
-                          value={config.dots.color}
-                          onChange={(e) => updateConfig({ 
-                            dots: { ...config.dots, color: e.target.value },
-                            corners: { ...config.corners, color: e.target.value },
-                            frame: { ...config.frame, color: e.target.value }
-                          })}
-                        />
-                        <div className="w-8 h-8 rounded-lg border border-slate-700 relative overflow-hidden shrink-0">
-                          <input 
-                            type="color" 
-                            className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                            value={config.dots.color}
-                            onChange={(e) => updateConfig({ 
-                              dots: { ...config.dots, color: e.target.value },
-                              corners: { ...config.corners, color: e.target.value },
-                              frame: { ...config.frame, color: e.target.value }
-                            })}
-                          />
-                        </div>
-                      </div>
-                    </InputGroup>
+                  <SectionHeader title="Interface Colors" onReset={() => updateConfig({ dots: { color: DEFAULT_CONFIG.dots.color }, corners: { color: DEFAULT_CONFIG.corners.color }, background: { color: DEFAULT_CONFIG.background.color }, label: { color: DEFAULT_CONFIG.label.color } })} />
+                  
+                  <div className="space-y-4">
+                    <ColorInput 
+                      label="QR Pattern Color"
+                      value={config.dots.color}
+                      onChange={(val) => updateConfig({ 
+                        dots: { color: val },
+                        corners: { color: val }
+                      })}
+                    />
 
-                    <InputGroup label="Canvas Background">
-                      <div className="flex items-center gap-3">
-                        <input 
-                          type="text" 
-                          className="flex-1 h-9 bg-transparent border-none text-[10px] font-mono px-2 text-white focus:ring-0 outline-none"
-                          value={config.background.color}
-                          onChange={(e) => updateConfig({ background: { ...config.background, color: e.target.value } })}
-                        />
-                        <div className="w-8 h-8 rounded-lg border border-slate-700 relative overflow-hidden shrink-0">
-                          <input 
-                            type="color" 
-                            className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                            value={config.background.color}
-                            onChange={(e) => updateConfig({ background: { ...config.background, color: e.target.value } })}
-                          />
-                        </div>
-                      </div>
-                    </InputGroup>
+                    <ColorInput 
+                      label="Card Background"
+                      value={config.background.color}
+                      onChange={(val) => updateConfig({ background: { color: val } })}
+                    />
+
+                    <ColorInput 
+                      label="Label Text Color"
+                      value={config.label.color}
+                      onChange={(val) => updateConfig({ label: { color: val } })}
+                    />
                   </div>
 
-                  <SectionHeader title="Gradient Mode" onReset={() => updateConfig({ dots: { ...config.dots, gradient: DEFAULT_CONFIG.dots.gradient } })} />
-                  <div className="space-y-4">
+                  <SectionHeader title="Dot Gradient" onReset={() => updateConfig({ dots: { gradient: DEFAULT_CONFIG.dots.gradient } })} />
+                  <div className="space-y-4 bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-white">Enable Gradient</span>
-                      <button 
-                        onClick={() => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, enabled: !config.dots.gradient?.enabled } } })}
-                        className={cn(
-                          "w-12 h-6 rounded-full transition-all relative",
-                          config.dots.gradient?.enabled ? "bg-primary" : "bg-slate-200 dark:bg-slate-700"
-                        )}
-                      >
-                        <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all", config.dots.gradient?.enabled ? "translate-x-6" : "translate-x-0")} />
-                      </button>
+                      <span className="text-xs font-bold text-slate-300">Enabled</span>
+                      <Tooltip content="Enable color gradient for QR pattern">
+                        <button 
+                          onClick={() => updateConfig({ dots: { gradient: { enabled: !config.dots.gradient?.enabled } } })}
+                          className={cn(
+                            "w-12 h-6 rounded-full transition-all relative",
+                            config.dots.gradient?.enabled ? "bg-primary" : "bg-slate-700"
+                          )}
+                        >
+                          <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all", config.dots.gradient?.enabled ? "translate-x-6" : "translate-x-0")} />
+                        </button>
+                      </Tooltip>
                     </div>
 
                     {config.dots.gradient?.enabled && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 pt-2">
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Color 1</span>
-                            <input type="color" className="w-full h-10 rounded-lg cursor-pointer" value={config.dots.gradient.color1} onChange={(e) => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, color1: e.target.value } } })} />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Color 2</span>
-                            <input type="color" className="w-full h-10 rounded-lg cursor-pointer" value={config.dots.gradient.color2} onChange={(e) => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, color2: e.target.value } } })} />
-                          </div>
+                          <ColorInput label="Color 1" value={config.dots.gradient.color1} onChange={(val) => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, color1: val } } })} />
+                          <ColorInput label="Color 2" value={config.dots.gradient.color2} onChange={(val) => updateConfig({ dots: { ...config.dots, gradient: { ...config.dots.gradient!, color2: val } } })} />
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
@@ -1333,36 +1056,44 @@ export default function App() {
                         </div>
 
                         <div className="flex gap-2">
-                          <button 
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex-1 h-9 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-[10px] font-bold transition-colors flex items-center justify-center gap-2"
-                          >
-                            <ImageIcon size={14} /> Upload Image
-                          </button>
-                          {config.logo?.src && (
+                          <Tooltip content="Upload local image" className="flex-1">
                             <button 
-                              onClick={() => updateConfig({ logo: { ...config.logo!, src: '' } })}
-                              className="w-9 h-9 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl flex items-center justify-center transition-colors"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="w-full h-9 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl text-[10px] font-bold transition-colors flex items-center justify-center gap-2"
                             >
-                              <Trash2 size={16} />
+                              <ImageIcon size={14} /> Upload Image
                             </button>
+                          </Tooltip>
+                          {config.logo?.src && (
+                            <Tooltip content="Remove logo">
+                              <button 
+                                onClick={() => updateConfig({ logo: { src: '' } })}
+                                className="w-9 h-9 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl flex items-center justify-center transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </Tooltip>
                           )}
                         </div>
                       </div>
                     </InputGroup>
                     
-                    <InputGroup label={`Scale: ${config.logo?.size || 30}%`}>
-                      <input type="range" min="10" max="50" value={config.logo?.size || 30} onChange={(e) => updateConfig({ logo: { ...config.logo!, size: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                    </InputGroup>
+                    <Tooltip content="Adjust logo size relative to QR" className="w-full">
+                      <InputGroup label={`Scale: ${config.logo?.size || 30}%`}>
+                        <input type="range" min="10" max="50" value={config.logo?.size || 30} onChange={(e) => updateConfig({ logo: { size: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
+                      </InputGroup>
+                    </Tooltip>
 
                     <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800">
                       <span className="text-[11px] font-bold dark:text-white">Clear behind logo</span>
-                      <button 
-                        onClick={() => updateConfig({ logo: { ...config.logo!, hideBackgroundDots: !config.logo?.hideBackgroundDots } })}
-                        className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-primary" : "bg-slate-200 dark:bg-zinc-800")}
-                      >
-                        <div className={cn("absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-all", config.logo?.hideBackgroundDots ? "translate-x-5" : "translate-x-0")} />
-                      </button>
+                      <Tooltip content="Remove QR dots behind logo for better visibility">
+                        <button 
+                          onClick={() => updateConfig({ logo: { hideBackgroundDots: !config.logo?.hideBackgroundDots } })}
+                          className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-primary" : "bg-slate-200 dark:bg-zinc-800")}
+                        >
+                          <div className={cn("absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-all", config.logo?.hideBackgroundDots ? "translate-x-5" : "translate-x-0")} />
+                        </button>
+                      </Tooltip>
                     </div>
                   </div>
                 </motion.div>
@@ -1370,216 +1101,248 @@ export default function App() {
 
               {activeTab === 'label' && (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-6">
-                  <SectionHeader title="Frame Layout" onReset={() => updateConfig({ frame: { ...config.frame, style: DEFAULT_CONFIG.frame.style } })} />
-                  <div className="grid grid-cols-3 gap-3">
-                    {['none', 'border', 'card'].map(style => (
-                      <button
-                        key={style}
-                        onClick={() => updateConfig({ frame: { ...config.frame, style: style as any } })}
+                  <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-2xl border border-slate-800">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-white">Display Label</span>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-tighter">Show text below QR</span>
+                    </div>
+                    <Tooltip content="Enable/Disable bottom text label">
+                      <button 
+                        onClick={() => updateConfig({ label: { enabled: !config.label.enabled } })}
                         className={cn(
-                          "h-12 rounded-xl border-2 font-bold text-xs transition-all capitalize",
-                          config.frame.style === style 
-                            ? "border-primary bg-primary/5 text-primary" 
-                            : "border-slate-800 text-slate-500 hover:border-slate-700"
+                          "w-12 h-6 rounded-full transition-all relative",
+                          config.label.enabled ? "bg-primary" : "bg-slate-700"
                         )}
                       >
-                        {style}
+                        <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all", config.label.enabled ? "translate-x-6" : "translate-x-0")} />
                       </button>
-                    ))}
-                  </div>
-
-                  <SectionHeader title="Label Content" onReset={() => updateConfig({ frame: { ...config.frame, text: DEFAULT_CONFIG.frame.text, fontSize: DEFAULT_CONFIG.frame.fontSize, color: DEFAULT_CONFIG.frame.color, fontFamily: DEFAULT_CONFIG.frame.fontFamily } })} />
-                  <div className="space-y-4">
-                    <InputGroup label="Tagline Text">
-                      <input 
-                        className="w-full h-9 bg-slate-900 border border-slate-800 rounded-lg px-3 text-sm outline-none text-white focus:border-primary/50 transition-colors"
-                        placeholder="SCAN ME"
-                        value={config.frame.text}
-                        onChange={(e) => updateConfig({ frame: { ...config.frame, text: e.target.value } })}
-                      />
-                    </InputGroup>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <InputGroup label="Text Font">
-                        <select 
-                          className="w-full h-9 bg-slate-900 border border-slate-800 rounded-lg px-2 text-sm outline-none text-white cursor-pointer focus:border-primary/50 transition-colors"
-                          value={config.frame.fontFamily}
-                          onChange={(e) => updateConfig({ frame: { ...config.frame, fontFamily: e.target.value } })}
-                        >
-                          {FONT_OPTIONS.map(font => (
-                            <option key={font.id} value={font.id} className="bg-black">{font.label}</option>
-                          ))}
-                        </select>
-                      </InputGroup>
-
-                      <InputGroup label="Text Color">
-                        <div className="flex items-center gap-2 h-9 px-1">
-                          <input 
-                            type="text" 
-                            className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
-                            value={config.frame.color}
-                            onChange={(e) => updateConfig({ frame: { ...config.frame, color: e.target.value } })}
-                          />
-                          <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
-                            <input 
-                              type="color" 
-                              className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                              value={config.frame.color}
-                              onChange={(e) => updateConfig({ frame: { ...config.frame, color: e.target.value } })}
-                            />
-                          </div>
-                        </div>
-                      </InputGroup>
+                    </Tooltip>
                     </div>
 
-                    <InputGroup label={`Text Size: ${config.frame.fontSize}px`}>
-                      <input type="range" min="8" max="48" value={config.frame.fontSize} onChange={(e) => updateConfig({ frame: { ...config.frame, fontSize: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                    </InputGroup>
-                  </div>
+                  {config.label.enabled && (
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
+                      <InputGroup label="Label Text">
+                        <input 
+                          className="w-full h-11 bg-slate-900 border border-slate-800 rounded-xl px-4 text-sm outline-none text-white focus:border-primary/50 transition-colors"
+                          placeholder="e.g., Scan to Visit"
+                          value={config.label.text}
+                          onChange={(e) => updateConfig({ label: { text: e.target.value } })}
+                        />
+                      </InputGroup>
 
-                  {config.frame.style !== 'none' && (
-                    <>
-                      <SectionHeader title="Frame Aesthetics" onReset={() => updateConfig({ frame: { ...config.frame, backgroundColor: DEFAULT_CONFIG.frame.backgroundColor, borderColor: DEFAULT_CONFIG.frame.borderColor, borderRadius: DEFAULT_CONFIG.frame.borderRadius, borderWidth: DEFAULT_CONFIG.frame.borderWidth, padding: DEFAULT_CONFIG.frame.padding, shadowColor: DEFAULT_CONFIG.frame.shadowColor, shadowIntensity: DEFAULT_CONFIG.frame.shadowIntensity } })} />
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          <InputGroup label="Card BG">
-                            <div className="flex items-center gap-2 h-9 px-1">
-                              <input 
-                                type="text" 
-                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
-                                value={config.frame.backgroundColor}
-                                onChange={(e) => updateConfig({ frame: { ...config.frame, backgroundColor: e.target.value } })}
-                              />
-                              <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
-                                <input 
-                                  type="color" 
-                                  className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                                  value={config.frame.backgroundColor}
-                                  onChange={(e) => updateConfig({ frame: { ...config.frame, backgroundColor: e.target.value } })}
-                                />
-                              </div>
-                            </div>
-                          </InputGroup>
+                      <div className="grid grid-cols-2 gap-3">
+                        <InputGroup label="Font Family">
+                          <select 
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-xl px-3 text-sm outline-none text-white cursor-pointer focus:border-primary/50 transition-colors"
+                            value={config.label.fontFamily}
+                            onChange={(e) => updateConfig({ label: { fontFamily: e.target.value } })}
+                          >
+                            {FONT_OPTIONS.map(font => (
+                              <option key={font.id} value={font.id} className="bg-black">{font.label}</option>
+                            ))}
+                          </select>
+                        </InputGroup>
 
-                          <InputGroup label="Border Color">
-                            <div className="flex items-center gap-2 h-9 px-1">
-                              <input 
-                                type="text" 
-                                className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
-                                value={config.frame.borderColor}
-                                onChange={(e) => updateConfig({ frame: { ...config.frame, borderColor: e.target.value } })}
-                              />
-                              <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
-                                <input 
-                                  type="color" 
-                                  className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                                  value={config.frame.borderColor}
-                                  onChange={(e) => updateConfig({ frame: { ...config.frame, borderColor: e.target.value } })}
-                                />
-                              </div>
-                            </div>
-                          </InputGroup>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <InputGroup label={`Corner: ${config.frame.borderRadius}px`}>
-                            <input type="range" min="0" max="100" value={config.frame.borderRadius} onChange={(e) => updateConfig({ frame: { ...config.frame, borderRadius: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                          </InputGroup>
-                          <InputGroup label={`Border: ${config.frame.borderWidth}px`}>
-                            <input type="range" min="0" max="20" value={config.frame.borderWidth} onChange={(e) => updateConfig({ frame: { ...config.frame, borderWidth: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                          </InputGroup>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                           <InputGroup label={`Padding: ${config.frame.padding}px`}>
-                            <input type="range" min="4" max="80" value={config.frame.padding} onChange={(e) => updateConfig({ frame: { ...config.frame, padding: parseInt(e.target.value) } })} className="w-full accent-primary h-6" />
-                          </InputGroup>
-                          <InputGroup label={`Shadow: ${Math.round(config.frame.shadowIntensity * 100)}%`}>
-                            <input type="range" min="0" max="100" value={config.frame.shadowIntensity * 100} onChange={(e) => updateConfig({ frame: { ...config.frame, shadowIntensity: parseInt(e.target.value) / 100 } })} className="w-full accent-primary h-6" />
-                          </InputGroup>
-                        </div>
-
-                        <InputGroup label="Shadow Color">
-                          <div className="flex items-center gap-2 h-9 px-1">
-                            <input 
-                              type="text" 
-                              className="flex-1 bg-transparent border-none text-[10px] font-mono text-white focus:ring-0 outline-none"
-                              value={config.frame.shadowColor}
-                              onChange={(e) => updateConfig({ frame: { ...config.frame, shadowColor: e.target.value } })}
-                            />
-                            <div className="w-6 h-6 rounded border border-slate-700 relative overflow-hidden shrink-0">
-                              <input 
-                                type="color" 
-                                className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer"
-                                value={config.frame.shadowColor}
-                                onChange={(e) => updateConfig({ frame: { ...config.frame, shadowColor: e.target.value } })}
-                              />
-                            </div>
-                          </div>
+                        <InputGroup label="Weight">
+                          <select 
+                            className="w-full h-11 bg-slate-900 border border-slate-800 rounded-xl px-3 text-sm outline-none text-white cursor-pointer focus:border-primary/50 transition-colors"
+                            value={config.label.fontWeight}
+                            onChange={(e) => updateConfig({ label: { fontWeight: e.target.value as any } })}
+                          >
+                            {FONT_WEIGHTS.map(weight => (
+                              <option key={weight.id} value={weight.id} className="bg-black">{weight.label}</option>
+                            ))}
+                          </select>
                         </InputGroup>
                       </div>
-                    </>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <InputGroup label={`Size: ${config.label.fontSize}px`}>
+                          <input 
+                            type="range" min="8" max="64" 
+                            value={config.label.fontSize} 
+                            onChange={(e) => updateConfig({ label: { fontSize: parseInt(e.target.value) } })} 
+                            className="w-full accent-primary mt-2" 
+                          />
+                        </InputGroup>
+
+                        <InputGroup label={`Spacing: ${config.label.letterSpacing}px`}>
+                          <input 
+                            type="range" min="-5" max="20" 
+                            value={config.label.letterSpacing} 
+                            onChange={(e) => updateConfig({ label: { letterSpacing: parseInt(e.target.value) } })} 
+                            className="w-full accent-primary mt-2" 
+                          />
+                        </InputGroup>
+                      </div>
+
+                      <div className="space-y-3">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Alignment</span>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { id: 'left', icon: AlignLeft, label: 'Align Left' },
+                            { id: 'center', icon: AlignCenter, label: 'Align Center' },
+                            { id: 'right', icon: AlignRight, label: 'Align Right' }
+                          ].map(opt => (
+                            <Tooltip key={opt.id} content={opt.label} className="w-full">
+                              <button
+                                onClick={() => updateConfig({ label: { alignment: opt.id as any } })}
+                                className={cn(
+                                  "h-11 rounded-xl border-2 flex items-center justify-center transition-all w-full",
+                                  config.label.alignment === opt.id 
+                                    ? "border-primary bg-primary/5 text-primary" 
+                                    : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/50"
+                                )}
+                              >
+                                <opt.icon size={20} />
+                              </button>
+                            </Tooltip>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
                   )}
                 </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* History Section */}
-            <div className="pt-8 border-t border-slate-100 dark:border-slate-800">
-              <button 
-                onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center justify-between w-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <History size={16} />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Recent History</span>
-                </div>
-                {showHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
-
-              <AnimatePresence>
-                {showHistory && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }} 
-                    animate={{ height: 'auto', opacity: 1 }} 
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="pt-4 space-y-4">
-                      {history.length > 0 ? (
-                        <>
-                          <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                            {history.map(item => (
-                              <button
-                                key={item.id}
-                                onClick={() => setConfig(item.config)}
-                                className="shrink-0 w-24 aspect-square bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden hover:border-primary transition-colors group relative"
-                              >
-                                <img src={item.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                  <span className="text-[8px] text-white font-bold uppercase">Restore</span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                          <button 
-                            onClick={clearHistory}
-                            className="flex items-center gap-1 text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors"
-                          >
-                            <Trash2 size={12} /> Clear History
-                          </button>
-                        </>
-                      ) : (
-                        <p className="text-[10px] text-slate-400 italic">No recent codes found.</p>
-                      )}
-                    </div>
-                  </motion.div>
                 )}
               </AnimatePresence>
             </div>
+
+          <div className="shrink-0 z-40 bg-[#050505] border-t border-white/5 p-4 md:p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+            <Dropdown 
+              className="w-full"
+              trigger={
+                <ConicButton 
+                  disabled={isExporting}
+                  className="w-full h-14 rounded-2xl shadow-xl shadow-primary/10 overflow-hidden"
+                >
+                  <div className="flex items-center gap-3">
+                    <Download size={20} className="text-primary" />
+                    <span className="text-xs font-black uppercase tracking-widest">
+                      {isExporting ? 'Exporting...' : 'Download'}
+                    </span>
+                    <ChevronDown size={14} className="text-slate-500" />
+                  </div>
+                </ConicButton>
+              }
+              items={[
+                { label: 'High Quality (PNG)', icon: Download, onClick: () => handleExport('png', 2), description: 'Best for digital use' },
+                { label: 'Vector (SVG)', icon: ShieldCheck, onClick: () => handleExport('svg'), description: 'Infinite scalability' },
+                { label: 'Document (PDF)', icon: Layout, onClick: () => handleExport('pdf'), description: 'Print-ready format' },
+                { label: 'Small File (PNG)', icon: History, onClick: () => handleExport('low-png'), description: 'Lightweight & compressed' },
+                { label: 'Copy to Clipboard', icon: Copy, onClick: () => handleCopy(), description: 'Paste anywhere instantly' },
+              ]}
+            />
           </div>
         </aside>
       </div>
+
+      {/* History Modal Overlay */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[100] flex flex-col pt-safe"
+          >
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black italic uppercase tracking-tighter">Design Log</h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Your recent creations</p>
+              </div>
+              <button 
+                onClick={() => setShowHistory(false)}
+                className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+                title="Close"
+              >
+                <ArrowLeft size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 scroll-smooth overscroll-contain">
+              {history.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-4 opacity-40">
+                  <History size={64} strokeWidth={1} />
+                  <p className="text-sm font-medium uppercase tracking-widest">No archives found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                  {history.map((entry) => (
+                    <Tooltip key={entry.id} content="Restore this design" className="w-full">
+                      <motion.div 
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setConfig(entry.config);
+                          setShowHistory(false);
+                          setToast('Design restored');
+                        }}
+                        className="group cursor-pointer flex flex-col w-full"
+                      >
+                        <div className="aspect-square bg-white rounded-2xl overflow-hidden flex items-center justify-center p-3 border border-white/10 relative shadow-lg group-hover:shadow-primary/20 transition-all">
+                          <img 
+                            src={entry.preview} 
+                            alt="QR Preview" 
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <CheckCircle2 className="text-white drop-shadow-lg" size={32} />
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between px-1">
+                          <p className="text-[10px] font-bold truncate text-slate-400 capitalize">
+                            {entry.config.type}
+                          </p>
+                          <span className="text-[8px] font-bold text-slate-600">
+                            {new Date(entry.timestamp).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </motion.div>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-8 border-t border-white/5 flex justify-center bg-black/50">
+              <Tooltip content="Irreversibly delete all saved designs" direction="top">
+                <button 
+                  onClick={clearHistory}
+                  disabled={history.length === 0}
+                  className="px-8 py-4 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-xs font-black uppercase tracking-widest flex items-center gap-3 hover:bg-red-500 hover:text-white transition-all disabled:opacity-30 disabled:grayscale group"
+                >
+                  <Trash2 size={16} className="group-hover:scale-110 transition-transform" />
+                  Purge All Designs
+                </button>
+              </Tooltip>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Global CSS Overrides */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .pt-safe { padding-top: env(safe-area-inset-top); }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        * {
+          -webkit-overflow-scrolling: touch;
+        }
+
+        html, body {
+          overscroll-behavior: none;
+          scroll-behavior: smooth;
+        }
+
+        .qr-render-container > canvas, .qr-render-container > svg {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: contain;
+        }
+      `}</style>
     </div>
   );
 }

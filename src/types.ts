@@ -3,10 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type QRType = 'url' | 'text' | 'wifi' | 'email' | 'phone' | 'vcard' | 'file' | 'image';
+export type QRType = 'url' | 'text' | 'wifi' | 'email' | 'phone' | 'vcard';
 
 export type DotStyle = 'square' | 'rounded' | 'dots' | 'classy' | 'classy-rounded' | 'extra-rounded' | 'wave' | 'cherry';
 export type CornerStyle = 'square' | 'dot' | 'rounded' | 'extra-rounded';
+
+export type QRStyle = 
+  | 'minimal' | 'soft-glow' | 'glass' | 'paper' | 'matte-dark' | 'subtle-gradient'
+  | 'neon-night' | 'retro-vapor' | 'royal-gold' | 'emerald-city' | 'midnight-oak'
+  | 'sunset-bliss' | 'lavender-dream' | 'cyberpunk' | 'industrial' | 'arctic-ice'
+  | 'crimson-edge' | 'oceanic-deep' | 'desert-sand' | 'forest-moss' | 'slate-stone'
+  | 'coffee-cream' | 'berry-punch' | 'mint-fresh' | 'lemon-zest' | 'galaxy-void'
+  | 'luxury-onyx' | 'pink-lemonade' | 'autumn-warmth' | 'deep-purple';
 
 export interface QRConfig {
   content: string;
@@ -30,6 +38,7 @@ export interface QRConfig {
   vCardEmail?: string;
   vCardUrl?: string;
   // Design
+  style: QRStyle;
   dots: {
     type: DotStyle;
     color: string;
@@ -55,24 +64,19 @@ export interface QRConfig {
     margin: number;
     hideBackgroundDots: boolean;
   };
-  frame: {
-    style: 'none' | 'border' | 'card';
+  label: {
+    enabled: boolean;
     text: string;
-    fontSize: number;
     color: string;
+    fontSize: number;
     fontFamily: string;
-    backgroundColor: string;
-    borderColor: string;
-    borderWidth: number;
-    borderRadius: number;
-    shadowColor: string;
-    shadowIntensity: number;
-    padding: number;
+    fontWeight: string;
+    letterSpacing: number;
+    alignment: 'left' | 'center' | 'right';
   };
   size: number;
   margin: number;
   errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
-  skin?: 'none' | 'cherry' | 'wave' | 'aurora' | 'cyberpunk' | 'midnight' | 'sunset' | 'forest';
 }
 
 export interface HistoryEntry {
