@@ -115,11 +115,12 @@ export default function App() {
           next = {
             ...next,
             background: { ...next.background, color: background },
+            label: { ...next.label, color: color },
             dots: { 
               ...next.dots, 
               color: color, 
               type: dotType as any, 
-              gradient: gradient ? { ...next.dots.gradient, ...gradient } : { ...next.dots.gradient, enabled: false } 
+              gradient: gradient ? { ...next.dots.gradient, ...gradient, type: gradient.type as 'linear' | 'radial' } : { ...next.dots.gradient, enabled: false } 
             },
             corners: { ...next.corners, type: cornerType as any, color: color }
           };
@@ -148,11 +149,25 @@ export default function App() {
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    const handleWinScroll = () => {
+      if (window.innerWidth < 768 || (window.innerWidth > window.innerHeight && window.innerHeight < 600) === false) {
+        setScrollPosition(window.scrollY);
+      }
+    };
+    window.addEventListener('scroll', handleWinScroll);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleWinScroll);
+    };
   }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    setScrollPosition(e.currentTarget.scrollTop);
+    // Only update from container if on desktop
+    if (window.innerWidth >= 768 && !isLandscape) {
+      setScrollPosition(e.currentTarget.scrollTop);
+    }
   };
 
   const resetToDefault = (section?: string) => {
@@ -328,7 +343,71 @@ export default function App() {
       const scale = quality * 2; // Base scale for HD
       
       if (format === 'svg' && qrStyling.current) {
-        qrStyling.current.download({ name: `qraura-${Date.now()}`, extension: 'svg' });
+        setToast('Downloading vector QR...');
+        try {
+          const blob = await qrStyling.current.getRawData('svg');
+          if (!blob) throw new Error("Failed to get SVG blob");
+          
+          let innerSvg = await blob.text();
+          innerSvg = innerSvg.replace(/<\?xml.*?\?>/g, '').trim();
+          
+          const padding = 40; 
+          const qrSize = config.size; 
+          const cardWidth = qrSize + (padding * 2);
+          let cardHeight = cardWidth;
+          
+          let labelSvg = '';
+          if (config.label.enabled && config.label.text) {
+            const fontSize = config.label.fontSize;
+            const textPaddingOffset = 20;
+            const textHeight = fontSize * 1.1;
+            cardHeight = padding + qrSize + textPaddingOffset + textHeight + padding;
+            
+            const alignMap: Record<string, string> = { left: 'start', center: 'middle', right: 'end' };
+            const xPosMap: Record<string, number> = { left: padding, center: cardWidth / 2, right: cardWidth - padding };
+            
+            labelSvg = `
+              <text 
+                x="${xPosMap[config.label.alignment]}" 
+                y="${padding + qrSize + textPaddingOffset + (fontSize * 0.8)}" 
+                font-family="'${config.label.fontFamily}', sans-serif" 
+                font-size="${fontSize}px" 
+                font-weight="${config.label.fontWeight}" 
+                fill="${config.label.color}" 
+                text-anchor="${alignMap[config.label.alignment]}"
+                letter-spacing="${config.label.letterSpacing}px"
+              >
+                ${config.label.text}
+              </text>
+            `;
+          }
+          
+          const isGlass = config.style === 'glass';
+          const isTransparent = config.background.transparent;
+          const bgFill = (isGlass || isTransparent) ? 'none' : config.background.color;
+          const borderRadius = isGlass ? 40 : 24;
+
+          const wrappedSvg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="${cardWidth}" height="${cardHeight}" viewBox="0 0 ${cardWidth} ${cardHeight}">
+              <rect width="${cardWidth}" height="${cardHeight}" fill="${bgFill}" rx="${borderRadius}" ry="${borderRadius}" />
+              <svg x="${padding}" y="${padding}" width="${qrSize}" height="${qrSize}">
+                ${innerSvg}
+              </svg>
+              ${labelSvg}
+            </svg>
+          `.trim();
+          
+          const finalBlob = new Blob([wrappedSvg], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(finalBlob);
+          const link = document.createElement('a');
+          link.download = `qraura-${Date.now()}.svg`;
+          link.href = url;
+          link.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error("Advanced SVG generation failed, falling back to basic:", err);
+          qrStyling.current.download({ name: `qraura-${Date.now()}`, extension: 'svg' });
+        }
       } else if (format === 'pdf') {
         const canvas = await html2canvas(previewRef.current, { scale, useCORS: true, backgroundColor: null });
         const imgData = canvas.toDataURL('image/png');
@@ -401,7 +480,10 @@ export default function App() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-black dark font-sans overflow-hidden">
+    <div className={cn(
+      "flex flex-col bg-[#0B0F14] dark font-sans",
+      isLandscape ? "h-screen overflow-hidden" : "min-h-[100dvh]"
+    )}>
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -411,26 +493,52 @@ export default function App() {
       />
       {/* Floating Mini Preview (Mobile Only) */}
       <AnimatePresence>
-        {(!isLandscape && scrollPosition > 150) && (
+        {(!isLandscape && scrollPosition > 200 && !showFullPreview) && (
           <motion.div
             initial={{ scale: 0, opacity: 0, y: 50 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0, opacity: 0, y: 50 }}
             onClick={() => setShowFullPreview(true)}
-            className="fixed bottom-24 right-4 z-[100] w-16 h-16 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.4)] border border-white/20 overflow-hidden cursor-pointer active:scale-95 transition-transform p-2"
+            className={cn(
+              "fixed bottom-[110px] right-4 z-[500] w-20 h-20 rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.4)] border border-white/20 overflow-hidden cursor-pointer active:scale-95 transition-transform p-2 flex items-center justify-center",
+              config.style === 'glass' ? "bg-white/30 backdrop-blur-md" : "bg-white"
+            )}
+            style={{
+              backgroundColor: config.style === 'glass' ? undefined : config.background.color
+            }}
           >
-            <div className="w-full h-full relative">
+            <div className="w-full flex-1 relative flex flex-col items-center justify-center pointer-events-none">
               <div ref={node => {
                 if (node && qrInstance) {
                   node.innerHTML = '';
                   const clone = new QRCodeStyling({
                     ...qrInstance._options,
-                    width: 120,
-                    height: 120,
+                    width: config.label.enabled && config.label.text ? 50 : 70,
+                    height: config.label.enabled && config.label.text ? 50 : 70,
+                    margin: 0
                   });
                   clone.append(node);
                 }
-              }} className="w-full h-full flex items-center justify-center scale-[0.4]" />
+              }} className="w-full flex items-center justify-center qr-render-container" />
+              {config.label.enabled && config.label.text && (
+                 <div 
+                    className="w-full flex flex-col mt-1"
+                    style={{ alignItems: config.label.alignment === 'center' ? 'center' : (config.label.alignment === 'left' ? 'flex-start' : 'flex-end') }}
+                  >
+                    <p 
+                      className="max-w-full break-words leading-none"
+                      style={{ 
+                        fontSize: `6px`, // Fixed tiny font size for mini preview
+                        color: config.label.color,
+                        fontFamily: `"${config.label.fontFamily}", sans-serif`,
+                        fontWeight: config.label.fontWeight,
+                        textAlign: config.label.alignment as any
+                      }}
+                    >
+                      {config.label.text}
+                    </p>
+                 </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -443,40 +551,71 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-3xl flex items-center justify-center p-8"
+            className="fixed inset-0 z-[200] bg-[#0B0F14]/95 backdrop-blur-3xl flex items-center justify-center p-8"
             onClick={() => setShowFullPreview(false)}
           >
+            <button 
+              onClick={() => setShowFullPreview(false)}
+              className="absolute top-6 right-6 md:top-8 md:right-8 w-12 h-12 bg-white/10 hover:bg-white/20 active:scale-95 rounded-full text-white flex items-center justify-center transition-all z-50 shadow-xl border border-white/10"
+            >
+              <RotateCcw size={18} />
+            </button>
             <motion.div 
               initial={{ scale: 0.8, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.8, y: 20 }}
-              className="relative w-full max-w-sm aspect-square bg-white rounded-[2rem] p-10 shadow-2xl"
+              className={cn(
+                "relative w-full max-w-sm rounded-[2rem] p-10 shadow-2xl flex items-center justify-center overflow-hidden",
+                config.style === 'glass' ? "bg-white/30 backdrop-blur-3xl border border-white/30" : ""
+              )}
+              style={{
+                backgroundColor: config.style === 'glass' ? undefined : config.background.color,
+                backgroundImage: config.style === 'paper' ? 'url("https://www.transparenttextures.com/handmade-paper.png")' : undefined
+              }}
               onClick={e => e.stopPropagation()}
             >
-              <button 
-                onClick={() => setShowFullPreview(false)}
-                className="absolute -top-12 right-0 text-white flex items-center gap-2 text-xs font-black uppercase tracking-widest"
-              >
-                Close <RotateCcw size={14} />
-              </button>
-              <div ref={node => {
-                if (node && qrInstance) {
-                  node.innerHTML = '';
-                  const modalQr = new QRCodeStyling({
-                    ...qrInstance._options,
-                    width: 320,
-                    height: 320,
-                  });
-                  modalQr.append(node);
-                }
-              }} className="w-full h-full flex items-center justify-center" />
+              <div className="flex flex-col items-center justify-center w-full relative z-10">
+                <div ref={node => {
+                  if (node && qrInstance) {
+                    node.innerHTML = '';
+                    const modalQr = new QRCodeStyling({
+                      ...qrInstance._options,
+                      width: 300,
+                      height: 300,
+                    });
+                    modalQr.append(node);
+                  }
+                }} className="w-full aspect-square flex items-center justify-center qr-render-container" />
+                {config.label.enabled && config.label.text && (
+                   <motion.div 
+                      layout
+                      className="w-full flex flex-col mt-4"
+                      style={{ alignItems: config.label.alignment === 'center' ? 'center' : (config.label.alignment === 'left' ? 'flex-start' : 'flex-end') }}
+                    >
+                      <p 
+                        className="max-w-full break-words"
+                        style={{ 
+                          fontSize: `${config.label.fontSize}px`, 
+                          color: config.label.color,
+                          fontFamily: `"${config.label.fontFamily}", sans-serif`,
+                          fontWeight: config.label.fontWeight,
+                          letterSpacing: `${config.label.letterSpacing}px`,
+                          textAlign: config.label.alignment as any,
+                          lineHeight: 1.1
+                        }}
+                      >
+                        {config.label.text}
+                      </p>
+                   </motion.div>
+                )}
+              </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Header - Transparent & Sleek */}
-      <header className="h-14 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-black/80 backdrop-blur-md z-50">
+      <header className="fixed top-0 w-full h-[60px] border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-black/80 backdrop-blur-md z-[1000]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-white/10">
             <img src="/logo.png" alt="QR Aura" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -513,10 +652,12 @@ export default function App() {
       </header>
 
       {/* Main Content Area: Responsive Grid */}
-      <div className={cn(
-        "flex-1 flex overflow-hidden",
-        isLandscape ? "flex-row" : "flex-col md:flex-row"
-      )}>
+      <main className={cn(
+        "flex-1 flex w-full pt-[60px]",
+        isLandscape ? "flex-row overflow-hidden" : "flex-col md:flex-row md:overflow-hidden",
+        "scroll-smooth"
+      )}
+      onScroll={handleScroll}>
         
         {/* Sticky Preview Section (Mobile Top / Desktop Right / Landscape Left) */}
         <main className={cn(
@@ -533,12 +674,12 @@ export default function App() {
             <AnimatePresence>
               {toast && (
                 <motion.div 
-                  initial={{ opacity: 0, y: -20 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="absolute top-4 bg-slate-900 border border-white/10 text-white px-4 py-2 rounded-full text-[10px] font-bold shadow-2xl z-50 flex items-center gap-2"
+                  exit={{ opacity: 0, y: 20 }}
+                  className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 border border-white/10 text-white px-6 py-3 rounded-full text-xs font-bold shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-[999] flex items-center gap-3"
                 >
-                  <CheckCircle2 size={12} className="text-primary" />
+                  <CheckCircle2 size={16} className="text-primary" />
                   {toast}
                 </motion.div>
               )}
@@ -553,55 +694,57 @@ export default function App() {
               <div className="absolute inset-0 bg-primary/10 blur-[100px] rounded-full scale-110 pointer-events-none opacity-50" />
               
               <motion.div 
-                ref={previewRef}
                 key={updateKey}
                 className={cn(
-                  "relative transition-all duration-500 flex flex-col items-center justify-center p-6 md:p-10 overflow-visible",
-                  "max-w-full max-h-full w-auto h-auto",
-                  config.style === 'minimal' && "bg-white rounded-3xl shadow-xl",
-                  config.style === 'soft-glow' && "bg-white rounded-[40px] shadow-[0_20px_60px_rgba(0,255,204,0.1)]",
-                  config.style === 'glass' && "bg-white/30 backdrop-blur-3xl border border-white/30 rounded-3xl shadow-2xl",
-                  config.style === 'paper' && "bg-[#fefae0] rounded-sm shadow-[0_4px_10px_rgba(0,0,0,0.1)] border border-black/5",
-                  config.style === 'matte-dark' && "bg-[#111111] rounded-[2.5rem] border border-white/5 shadow-2xl",
-                  config.style === 'subtle-gradient' && "bg-white rounded-3xl shadow-2xl border border-slate-100"
+                  "relative transition-all duration-500",
+                  "max-w-full max-h-full w-auto h-auto min-w-[200px] min-h-[200px]",
+                  config.style === 'glass' ? "rounded-[2.5rem] shadow-2xl" : "rounded-3xl shadow-2xl"
                 )}
-                style={{
-                  backgroundColor: config.style === 'paper' ? '#fefae0' : (config.style === 'matte-dark' ? '#111111' : (config.style === 'minimal' || config.style === 'soft-glow' || config.style === 'subtle-gradient' ? config.background.color : undefined)),
-                  backgroundImage: config.style === 'paper' ? 'url("https://www.transparenttextures.com/handmade-paper.png")' : undefined
-                }}
               >
-                <div className="flex flex-col items-center justify-center w-full h-full">
-                  <div 
-                    ref={qrContainerRef} 
-                    className={cn(
-                      "transition-all duration-300 relative z-20 aspect-square flex items-center justify-center qr-render-container",
-                      isLandscape ? "w-[160px] h-[160px]" : "w-[200px] h-[200px] xs:w-[240px] xs:h-[240px] sm:w-[300px] sm:h-[300px]",
-                      (isRegenerating || !config.content) ? "opacity-30 blur-md scale-95" : "opacity-100 scale-100"
-                    )} 
-                  />
-
-                  {config.label.enabled && config.label.text && (
-                    <motion.div 
-                      layout
-                      className={cn("w-full flex flex-col", isLandscape ? "mt-2" : "mt-5")}
-                      style={{ alignItems: config.label.alignment === 'center' ? 'center' : (config.label.alignment === 'left' ? 'flex-start' : 'flex-end') }}
-                    >
-                      <p 
-                        className="max-w-full break-words"
-                        style={{ 
-                          fontSize: `${isLandscape ? config.label.fontSize * 0.7 : config.label.fontSize}px`,
-                          color: config.label.color,
-                          fontFamily: `'${config.label.fontFamily}', sans-serif`,
-                          fontWeight: config.label.fontWeight,
-                          letterSpacing: `${config.label.letterSpacing}px`,
-                          textAlign: config.label.alignment as any,
-                          lineHeight: 1.1
-                        }}
-                      >
-                        {config.label.text}
-                      </p>
-                    </motion.div>
+                <div
+                  ref={previewRef}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-8 overflow-hidden w-full h-full relative",
+                    config.style === 'glass' ? "bg-white/30 backdrop-blur-3xl border border-white/30 rounded-[2.5rem]" : "rounded-3xl"
                   )}
+                  style={{
+                    backgroundColor: config.style === 'glass' ? undefined : config.background.color,
+                    backgroundImage: config.style === 'paper' ? 'url("https://www.transparenttextures.com/handmade-paper.png")' : undefined
+                  }}
+                >
+                  <div className="flex flex-col items-center justify-center w-full h-full relative z-10">
+                    <div 
+                      ref={qrContainerRef} 
+                      className={cn(
+                        "transition-all duration-300 relative z-20 aspect-square flex items-center justify-center qr-render-container",
+                        isLandscape ? "w-[160px] h-[160px]" : "w-[200px] h-[200px] xs:w-[240px] xs:h-[240px] sm:w-[300px] sm:h-[300px]",
+                        (isRegenerating || !config.content) ? "opacity-30 blur-md scale-95" : "opacity-100 scale-100"
+                      )} 
+                    />
+
+                    {config.label.enabled && config.label.text && (
+                      <motion.div 
+                        layout
+                        className={cn("w-full flex flex-col", isLandscape ? "mt-2" : "mt-5")}
+                        style={{ alignItems: config.label.alignment === 'center' ? 'center' : (config.label.alignment === 'left' ? 'flex-start' : 'flex-end') }}
+                      >
+                        <p 
+                          className="max-w-full break-words"
+                          style={{ 
+                            fontSize: `${isLandscape ? config.label.fontSize * 0.7 : config.label.fontSize}px`,
+                            color: config.label.color,
+                            fontFamily: `"${config.label.fontFamily}", sans-serif`,
+                            fontWeight: config.label.fontWeight,
+                            letterSpacing: `${config.label.letterSpacing}px`,
+                            textAlign: config.label.alignment as any,
+                            lineHeight: 1.1
+                          }}
+                        >
+                          {config.label.text}
+                        </p>
+                      </motion.div>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             </div>
@@ -610,13 +753,13 @@ export default function App() {
 
         {/* Sidebar / Controls Section */}
         <aside className={cn(
-          "flex flex-col bg-[#050505] overflow-hidden border-white/5",
+          "flex flex-col bg-[#050505] border-white/5 relative",
           isLandscape 
-            ? "flex-1 border-l" 
-            : "w-full md:w-[400px] lg:w-[450px] flex-1 md:flex-none border-t md:border-t-0 md:border-l"
+            ? "flex-1 border-l overflow-hidden" 
+            : "w-full md:w-[400px] lg:w-[450px] shrink-0 md:flex-none md:overflow-hidden border-t md:border-t-0 md:border-l"
         )}>
           
-          <div className="shrink-0 z-40 bg-[#050505] border-b border-white/5 shadow-2xl px-4 py-4 md:px-6 md:py-6">
+          <div className="shrink-0 z-40 bg-[#050505] border-b border-white/5 shadow-2xl px-4 py-4 md:px-6 md:py-6 sticky top-[60px] md:top-0">
             <SmoothTabs 
               tabs={[
                 { id: 'content', label: 'Data', icon: LinkIcon, tooltip: 'Configure QR Content' },
@@ -641,7 +784,7 @@ export default function App() {
             id="tab-content-area"
             ref={scrollRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto no-scrollbar overscroll-contain p-6 pb-24 space-y-8"
+            className="flex-1 overflow-visible md:overflow-y-auto no-scrollbar p-4 md:p-6 pb-24 space-y-8"
           >
             <AnimatePresence>
               {activeTab === 'content' && (
@@ -1207,7 +1350,7 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-          <div className="shrink-0 z-40 bg-[#050505] border-t border-white/5 p-4 md:p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+          <div className="shrink-0 z-40 bg-black/90 backdrop-blur-3xl border-t border-white/5 p-4 md:p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] sticky bottom-0">
             <Dropdown 
               className="w-full"
               trigger={
@@ -1234,7 +1377,7 @@ export default function App() {
             />
           </div>
         </aside>
-      </div>
+      </main>
 
       {/* History Modal Overlay */}
       <AnimatePresence>

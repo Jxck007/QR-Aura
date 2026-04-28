@@ -188,12 +188,12 @@ export const SmoothTabs: React.FC<{
   return (
     <div className={cn("relative group", className)}>
       {/* Side fades for scroll indicator */}
-      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-black via-black/40 to-transparent z-20 pointer-events-none opacity-60" />
-      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-black via-black/40 to-transparent z-20 pointer-events-none opacity-60" />
+      <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[#050505] to-transparent z-20 pointer-events-none opacity-80" />
+      <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[#050505] to-transparent z-20 pointer-events-none opacity-80" />
       
       <div 
         ref={containerRef}
-        className="flex px-8 py-2 bg-black/40 backdrop-blur-3xl rounded-[2rem] relative overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
+        className="flex px-8 py-2 bg-black/40 backdrop-blur-3xl relative overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
         style={{ perspective: '1000px' }}
       >
         <div className="flex min-w-full items-end pb-1 h-16">
@@ -207,30 +207,30 @@ export const SmoothTabs: React.FC<{
                   onClick={() => onChange(tab.id)}
                   className={cn(
                     "relative z-10 flex flex-col items-center justify-center min-w-[70px] py-1 px-3 snap-center transition-all duration-300",
-                    isActive ? "text-primary cursor-default" : "text-slate-500 hover:text-slate-300"
+                    isActive ? "text-primary cursor-default" : "text-slate-500 hover:text-white"
                   )}
                   animate={{
-                    scale: isActive ? 1.25 : 0.85,
-                    opacity: isActive ? 1 : 0.4,
-                    y: isActive ? -12 : 4,
+                    scale: isActive ? 1.1 : 0.9,
+                    opacity: isActive ? 1 : 0.5,
+                    y: isActive ? -4 : 0,
                   }}
                   transition={{ type: "spring", stiffness: 500, damping: 25, mass: 0.5 }}
                   whileTap={{ scale: 0.95 }}
                 >
                   <div className={cn(
-                    "w-12 h-12 flex items-center justify-center rounded-2xl transition-all duration-300 relative",
-                    isActive ? "bg-primary/20 shadow-[0_0_30px_rgba(0,255,204,0.15)] border border-primary/30" : "bg-transparent"
+                    "w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300 relative",
+                    isActive ? "bg-primary/10 shadow-[0_0_20px_rgba(0,255,204,0.1)] border border-primary/20" : "bg-transparent"
                   )}>
                     {isActive && (
                       <motion.div 
                         layoutId="activeTabIndicator"
-                        className="absolute inset-0 bg-primary/20 rounded-2xl blur-md"
+                        className="absolute inset-0 bg-primary/10 rounded-xl blur-sm"
                       />
                     )}
-                    {Icon && <Icon size={isActive ? 22 : 18} className={cn("transition-all z-10 duration-300", isActive ? "stroke-[2.5px] text-primary" : "stroke-2 text-slate-500")} />}
+                    {Icon && <Icon size={isActive ? 20 : 18} className={cn("transition-all z-10 duration-300", isActive ? "stroke-[2.5px] text-primary" : "stroke-2 text-slate-400")} />}
                   </div>
                   <span className={cn(
-                    "text-[8px] font-black uppercase tracking-[0.2em] mt-3 transition-all duration-300",
+                    "text-[9px] font-black uppercase tracking-[0.2em] mt-2 transition-all duration-300",
                     isActive ? "opacity-100 translate-y-0 text-primary" : "opacity-0 translate-y-1 text-slate-500"
                   )}>
                     {tab.label}

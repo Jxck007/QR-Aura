@@ -9,8 +9,8 @@
   --font-serif: "Playfair Display", serif;
 
   --color-primary: #ffffff;
-  --color-accent: #00ffcc;
-  --color-aura: #477f88;
+  --color-accent: #4F8CFF;
+  --color-aura: #7CF3D0;
   
   /* Hex scale for capture stability */
   --color-slate-50: #f8fafc;
@@ -32,13 +32,13 @@
 
 @layer base {
   html, body, #root {
-    height: 100%;
-    overflow: hidden;
-    @apply transition-colors duration-700;
+    min-height: 100%;
+    @apply transition-colors duration-700 bg-[#0B0F14];
   }
 
   body {
-    @apply font-sans antialiased text-slate-900 dark:text-slate-100;
+    @apply font-sans antialiased text-[#E6EDF3];
+    overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
 }
