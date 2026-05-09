@@ -800,8 +800,8 @@ export default function App() {
                             className={cn(
                               "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all min-h-[72px] w-full",
                               config.type === type.id 
-                                ? "border-primary bg-primary/5 text-primary" 
-                                : "border-slate-800 text-slate-500 hover:border-slate-700"
+                                ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] shadow-[0_0_15px_rgba(0,255,204,0.1)]" 
+                                : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:text-white"
                             )}
                           >
                             <Icon size={20} />
@@ -992,8 +992,8 @@ export default function App() {
                             className={cn(
                               "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all w-full",
                               config.dots.type === style.id 
-                                ? "border-primary bg-primary/5 text-primary scale-[1.04]" 
-                                : "border-slate-800 text-slate-500 hover:border-slate-700"
+                                ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] scale-[1.04] shadow-[0_0_15px_rgba(0,255,204,0.1)]" 
+                                : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:text-white"
                             )}
                           >
                             <Icon size={24} />
@@ -1013,8 +1013,8 @@ export default function App() {
                           className={cn(
                             "h-12 rounded-xl border-2 font-bold text-xs transition-all w-full",
                             config.corners.type === style.id 
-                              ? "border-primary bg-primary/5 text-primary" 
-                              : "border-slate-800 text-slate-500 hover:border-slate-700"
+                              ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] shadow-[0_0_15px_rgba(0,255,204,0.1)]" 
+                              : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:text-white"
                           )}
                         >
                           {style.label}
@@ -1045,8 +1045,8 @@ export default function App() {
                                 className={cn(
                                   "py-1.5 rounded-lg border text-[10px] font-bold transition-all",
                                   config.size === sz 
-                                    ? "border-primary bg-primary/10 text-primary" 
-                                    : "border-slate-800 text-slate-500 hover:border-slate-700"
+                                    ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.1)]" 
+                                    : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:text-white"
                                 )}
                               >
                                 {sz}px
@@ -1072,8 +1072,8 @@ export default function App() {
                           className={cn(
                             "flex flex-col items-center justify-center py-2 rounded-xl border-2 transition-all w-full",
                             config.errorCorrectionLevel === level.id 
-                              ? "border-primary bg-primary/5 text-primary scale-[1.02]" 
-                              : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/50"
+                              ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] scale-[1.02] shadow-[0_0_15px_rgba(0,255,204,0.1)]" 
+                              : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:bg-slate-900/50 hover:text-white"
                           )}
                         >
                           <span className="text-[10px] font-bold">{level.label}</span>
@@ -1103,8 +1103,8 @@ export default function App() {
                             className={cn(
                               "group flex flex-col items-center gap-3 p-6 rounded-2xl border-2 transition-all relative overflow-hidden text-center w-full",
                               config.style === preset.id 
-                                ? "border-primary bg-primary/5 text-primary shadow-[0_0_20px_rgba(0,255,204,0.1)]" 
-                                : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/40"
+                                ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] shadow-[0_0_20px_rgba(0,255,204,0.15)]" 
+                                : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:bg-slate-900/40 hover:text-white"
                             )}
                           >
                             <Icon size={24} className="relative z-10 transition-transform group-hover:scale-110" />
@@ -1156,7 +1156,7 @@ export default function App() {
                           onClick={() => updateConfig({ dots: { gradient: { enabled: !config.dots.gradient?.enabled } } })}
                           className={cn(
                             "w-12 h-6 rounded-full transition-all relative",
-                            config.dots.gradient?.enabled ? "bg-primary" : "bg-slate-700"
+                            config.dots.gradient?.enabled ? "bg-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.2)]" : "bg-slate-800/80 border border-slate-700"
                           )}
                         >
                           <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all", config.dots.gradient?.enabled ? "translate-x-6" : "translate-x-0")} />
@@ -1232,7 +1232,7 @@ export default function App() {
                       <Tooltip content="Remove QR dots behind logo for better visibility">
                         <button 
                           onClick={() => updateConfig({ logo: { hideBackgroundDots: !config.logo?.hideBackgroundDots } })}
-                          className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-primary" : "bg-slate-200 dark:bg-zinc-800")}
+                          className={cn("w-10 h-5 rounded-full relative transition-all", config.logo?.hideBackgroundDots ? "bg-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.2)]" : "bg-slate-800/80 border border-slate-700")}
                         >
                           <div className={cn("absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-all", config.logo?.hideBackgroundDots ? "translate-x-5" : "translate-x-0")} />
                         </button>
@@ -1254,7 +1254,7 @@ export default function App() {
                         onClick={() => updateConfig({ label: { enabled: !config.label.enabled } })}
                         className={cn(
                           "w-12 h-6 rounded-full transition-all relative",
-                          config.label.enabled ? "bg-primary" : "bg-slate-700"
+                          config.label.enabled ? "bg-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.2)]" : "bg-slate-800/80 border border-slate-700"
                         )}
                       >
                         <div className={cn("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all", config.label.enabled ? "translate-x-6" : "translate-x-0")} />
@@ -1333,8 +1333,8 @@ export default function App() {
                                 className={cn(
                                   "h-11 rounded-xl border-2 flex items-center justify-center transition-all w-full",
                                   config.label.alignment === opt.id 
-                                    ? "border-primary bg-primary/5 text-primary" 
-                                    : "border-slate-800 text-slate-500 hover:border-slate-700 hover:bg-slate-900/50"
+                                    ? "border-[#00ffcc] bg-[#00ffcc]/10 text-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.1)]" 
+                                    : "border-slate-800/80 bg-[#050505] text-slate-500 hover:border-slate-700 hover:bg-slate-900/50 hover:text-white"
                                 )}
                               >
                                 <opt.icon size={20} />
