@@ -169,6 +169,16 @@ export const SmoothTabs: React.FC<{
 }> = ({ tabs, activeTab, onChange, className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const activeBtn = containerRef.current.querySelector('[data-active="true"]') as HTMLElement;
+    if (activeBtn) {
+      const container = containerRef.current;
+      const scrollLeft = activeBtn.offsetLeft - container.offsetWidth / 2 + activeBtn.offsetWidth / 2;
+      container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+    }
+  }, [activeTab]);
+
   return (
     <div className={cn("relative w-full", className)}>
       <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[#050505] to-transparent z-20 pointer-events-none opacity-80" />
@@ -186,6 +196,7 @@ export const SmoothTabs: React.FC<{
             <button
               key={tab.id}
               onClick={() => onChange(tab.id)}
+              data-active={isActive}
               className={cn(
                 "relative flex items-center justify-center gap-2 px-4 md:px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all shrink-0 group focus:outline-none",
                 isActive ? "text-slate-900" : "text-slate-400 hover:text-white"
