@@ -168,78 +168,41 @@ export const SmoothTabs: React.FC<{
   className?: string;
 }> = ({ tabs, activeTab, onChange, className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
-
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const { scrollLeft, scrollWidth, clientWidth } = containerRef.current;
-    if (scrollWidth === clientWidth) return;
-    setScrollProgress(scrollLeft / (scrollWidth - clientWidth));
-  };
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
-    }
-  }, []);
 
   return (
-    <div className={cn("relative group", className)}>
-      {/* Side fades for scroll indicator */}
+    <div className={cn("relative w-full", className)}>
       <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-[#050505] to-transparent z-20 pointer-events-none opacity-80" />
       <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-[#050505] to-transparent z-20 pointer-events-none opacity-80" />
       
       <div 
         ref={containerRef}
-        className="flex px-8 py-2 bg-black/40 backdrop-blur-3xl relative overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
-        style={{ perspective: '1000px' }}
+        className="flex overflow-x-auto no-scrollbar scroll-smooth gap-1 md:gap-2 p-1.5 bg-white/[0.03] backdrop-blur-xl rounded-[1.25rem] border border-white/5 relative z-10"
       >
-        <div className="flex min-w-full items-end pb-1 h-16">
-          {tabs.map((tab, idx) => {
-            const isActive = activeTab === tab.id;
-            const Icon = tab.icon;
-            
-            return (
-              <Tooltip key={tab.id} content={tab.tooltip || tab.label} direction="top">
-                <motion.button
-                  onClick={() => onChange(tab.id)}
-                  className={cn(
-                    "relative z-10 flex flex-col items-center justify-center min-w-[70px] py-1 px-3 snap-center transition-all duration-300",
-                    isActive ? "text-primary cursor-default" : "text-slate-500 hover:text-white"
-                  )}
-                  animate={{
-                    scale: isActive ? 1.1 : 0.9,
-                    opacity: isActive ? 1 : 0.5,
-                    y: isActive ? -4 : 0,
-                  }}
-                  transition={{ type: "spring", stiffness: 500, damping: 25, mass: 0.5 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <div className={cn(
-                    "w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300 relative",
-                    isActive ? "bg-primary/10 shadow-[0_0_20px_rgba(0,255,204,0.1)] border border-primary/20" : "bg-transparent"
-                  )}>
-                    {isActive && (
-                      <motion.div 
-                        layoutId="activeTabIndicator"
-                        className="absolute inset-0 bg-primary/10 rounded-xl blur-sm"
-                      />
-                    )}
-                    {Icon && <Icon size={isActive ? 20 : 18} className={cn("transition-all z-10 duration-300", isActive ? "stroke-[2.5px] text-primary" : "stroke-2 text-slate-400")} />}
-                  </div>
-                  <span className={cn(
-                    "text-[9px] font-black uppercase tracking-[0.2em] mt-2 transition-all duration-300",
-                    isActive ? "opacity-100 translate-y-0 text-primary" : "opacity-0 translate-y-1 text-slate-500"
-                  )}>
-                    {tab.label}
-                  </span>
-                </motion.button>
-              </Tooltip>
-            );
-          })}
-        </div>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const Icon = tab.icon;
+          
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onChange(tab.id)}
+              className={cn(
+                "relative flex items-center justify-center gap-2 px-4 md:px-5 py-2.5 rounded-xl text-[13px] font-semibold transition-all shrink-0 group focus:outline-none",
+                isActive ? "text-slate-900" : "text-slate-400 hover:text-white"
+              )}
+            >
+              {isActive && (
+                <motion.div 
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-primary shadow-[0_0_15px_rgba(0,255,204,0.3)] rounded-xl"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              {Icon && <Icon size={16} className={cn("relative z-10 transition-colors duration-300", isActive ? "text-slate-900" : "group-hover:text-white")} />}
+              <span className="relative z-10 tracking-wide">{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
       
       <style>{`

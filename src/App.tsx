@@ -759,7 +759,7 @@ export default function App() {
             : "w-full md:w-[400px] lg:w-[450px] shrink-0 md:flex-none md:overflow-hidden border-t md:border-t-0 md:border-l"
         )}>
           
-          <div className="shrink-0 z-40 bg-[#050505] border-b border-white/5 shadow-2xl px-4 py-4 md:px-6 md:py-6 sticky top-[60px] md:top-0">
+          <div className="shrink-0 z-40 bg-[#050505]/90 backdrop-blur-xl border-b border-white/5 shadow-2xl px-4 py-3 sticky top-[60px] md:top-0">
             <SmoothTabs 
               tabs={[
                 { id: 'content', label: 'Data', icon: LinkIcon, tooltip: 'Configure QR Content' },
