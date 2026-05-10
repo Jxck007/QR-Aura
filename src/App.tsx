@@ -654,22 +654,22 @@ export default function App() {
       {/* Main Content Area: Responsive Grid */}
       <main className={cn(
         "flex-1 flex w-full pt-[60px]",
-        isLandscape ? "flex-row overflow-hidden" : "flex-col md:flex-row md:overflow-hidden",
+        isLandscape ? "flex-row h-[calc(100dvh-60px)] overflow-hidden" : "flex-col md:flex-row md:h-[calc(100dvh-60px)] md:overflow-hidden",
         "scroll-smooth"
       )}
       onScroll={handleScroll}>
         
         {/* Sticky Preview Section (Mobile Top / Desktop Right / Landscape Left) */}
         <section className={cn(
-          "bg-black flex flex-col relative shrink-0 z-20 border-white/5 sticky top-[60px]",
+          "bg-black flex flex-col relative shrink-0 z-20 border-white/5",
           isLandscape 
-            ? "w-2/5 border-r" 
-            : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l"
+            ? "w-2/5 border-r h-full" 
+            : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l md:h-full"
         )}>
           {/* Fixed Height / Aspect Ratio Preview Container */}
           <div className={cn(
-            "flex-1 flex flex-col items-center justify-center p-4 relative z-10",
-            !isLandscape && "min-h-[340px] md:min-h-0 md:p-8"
+            "flex-1 flex flex-col items-center justify-start p-4 md:p-8 relative z-10 overflow-hidden",
+            !isLandscape && "min-h-[340px] md:min-h-0"
           )}>
             <AnimatePresence>
               {toast && (
@@ -687,7 +687,7 @@ export default function App() {
 
             {/* The Actual QR Stage */}
             <div className={cn(
-              "w-full flex items-center justify-center relative",
+              "w-full flex items-start justify-center relative pt-4 md:pt-8",
               isLandscape ? "max-w-full" : "max-w-[min(90vw,450px)] aspect-square"
             )}>
               {/* Subtle Glow Backdrop */}
@@ -753,7 +753,7 @@ export default function App() {
 
         {/* Sidebar / Controls Section */}
         <aside className={cn(
-          "flex flex-col bg-[#050505] border-white/5 relative",
+          "flex flex-col bg-[#050505] border-white/5 relative h-full",
           isLandscape 
             ? "flex-1 border-l overflow-hidden" 
             : "w-full md:w-[400px] lg:w-[450px] shrink-0 md:flex-none md:overflow-hidden border-t md:border-t-0 md:border-l"

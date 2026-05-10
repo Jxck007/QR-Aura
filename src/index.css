@@ -32,12 +32,13 @@
 
 @layer base {
   html, body, #root {
+    height: 100%;
     min-height: 100%;
     @apply transition-colors duration-700 bg-[#0B0F14];
   }
 
   body {
-    @apply font-sans antialiased text-[#E6EDF3];
+    @apply font-sans antialiased text-[#E6EDF3] overflow-hidden;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
