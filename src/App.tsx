@@ -654,17 +654,17 @@ export default function App() {
       {/* Main Content Area: Responsive Grid */}
       <main className={cn(
         "flex-1 flex w-full pt-[60px]",
-        isLandscape ? "flex-row h-[calc(100dvh-60px)] overflow-hidden" : "flex-col md:flex-row md:h-[calc(100dvh-60px)] md:overflow-hidden",
+        isLandscape ? "flex-row" : "flex-col md:flex-row",
         "scroll-smooth"
       )}
       onScroll={handleScroll}>
         
         {/* Sticky Preview Section (Mobile Top / Desktop Right / Landscape Left) */}
         <section className={cn(
-          "bg-black flex flex-col relative shrink-0 z-20 border-white/5",
+          "bg-black flex flex-col relative shrink-0 z-20 border-white/5 md:sticky md:top-[60px] md:self-start",
           isLandscape 
-            ? "w-2/5 border-r h-full" 
-            : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l md:h-full"
+            ? "w-2/5 border-r" 
+            : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l"
         )}>
           {/* Fixed Height / Aspect Ratio Preview Container */}
           <div className={cn(
@@ -784,7 +784,7 @@ export default function App() {
             id="tab-content-area"
             ref={scrollRef}
             onScroll={handleScroll}
-            className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-4 md:p-6 pb-24 space-y-8"
+            className="flex-1 overflow-visible no-scrollbar p-4 md:p-6 pb-24 space-y-8"
           >
             <AnimatePresence>
               {activeTab === 'content' && (

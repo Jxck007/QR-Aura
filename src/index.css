@@ -38,7 +38,7 @@
   }
 
   body {
-    @apply font-sans antialiased text-[#E6EDF3] overflow-hidden;
+    @apply font-sans antialiased text-[#E6EDF3];
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
