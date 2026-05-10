@@ -660,8 +660,8 @@ export default function App() {
       onScroll={handleScroll}>
         
         {/* Sticky Preview Section (Mobile Top / Desktop Right / Landscape Left) */}
-        <main className={cn(
-          "bg-black flex flex-col relative shrink-0 z-20 border-white/5",
+        <section className={cn(
+          "bg-black flex flex-col relative shrink-0 z-20 border-white/5 sticky top-[60px]",
           isLandscape 
             ? "w-2/5 border-r" 
             : "w-full md:w-3/5 lg:w-2/3 md:shrink md:flex-1 md:order-last border-b md:border-b-0 md:border-l"
@@ -749,7 +749,7 @@ export default function App() {
               </motion.div>
             </div>
           </div>
-        </main>
+        </section>
 
         {/* Sidebar / Controls Section */}
         <aside className={cn(
