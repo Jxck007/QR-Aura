@@ -753,7 +753,7 @@ export default function App() {
 
         {/* Sidebar / Controls Section */}
         <aside className={cn(
-          "flex flex-col bg-[#050505] border-white/5 relative h-full",
+          "flex flex-col bg-[#050505] border-white/5 relative h-full min-h-0",
           isLandscape 
             ? "flex-1 border-l overflow-hidden" 
             : "w-full md:w-[400px] lg:w-[450px] shrink-0 md:flex-none md:overflow-hidden border-t md:border-t-0 md:border-l"
@@ -784,7 +784,7 @@ export default function App() {
             id="tab-content-area"
             ref={scrollRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-visible md:overflow-y-auto no-scrollbar p-4 md:p-6 pb-24 space-y-8"
+            className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-4 md:p-6 pb-24 space-y-8"
           >
             <AnimatePresence>
               {activeTab === 'content' && (
