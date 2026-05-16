@@ -20,7 +20,7 @@ export const COLORS = {
 };
 
 export const DEFAULT_CONFIG: QRConfig = {
-  content: 'https://qraura.io',
+  content: 'https://qube.example',
   type: 'url',
   style: 'minimal',
   dots: {

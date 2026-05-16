@@ -1,4 +1,4 @@
-// LucidQR v2.0 — Generated with AI Studio
+// QUBE — Generated with AI Studio
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   QrCode, 
@@ -287,7 +287,7 @@ export default function App() {
         qrInstance.update({
           width: config.size,
           height: config.size,
-          data: config.content || 'https://qraura.io',
+          data: config.content || 'https://qube.example',
           dotsOptions,
           backgroundOptions: { 
             color: config.background.transparent ? 'transparent' : config.background.color 
@@ -400,20 +400,20 @@ export default function App() {
           const finalBlob = new Blob([wrappedSvg], { type: 'image/svg+xml' });
           const url = URL.createObjectURL(finalBlob);
           const link = document.createElement('a');
-          link.download = `qraura-${Date.now()}.svg`;
+          link.download = `qube-${Date.now()}.svg`;
           link.href = url;
           link.click();
           URL.revokeObjectURL(url);
         } catch (err) {
           console.error("Advanced SVG generation failed, falling back to basic:", err);
-          qrStyling.current.download({ name: `qraura-${Date.now()}`, extension: 'svg' });
+          qrStyling.current.download({ name: `qube-${Date.now()}`, extension: 'svg' });
         }
       } else if (format === 'pdf') {
         const canvas = await html2canvas(previewRef.current, { scale, useCORS: true, backgroundColor: null });
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [canvas.width / scale, canvas.height / scale] });
         pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / scale, canvas.height / scale);
-        pdf.save(`qraura-${Date.now()}.pdf`);
+        pdf.save(`qube-${Date.now()}.pdf`);
       } else {
         const canvas = await html2canvas(previewRef.current, { 
           scale: format === 'low-png' ? 1 : scale, 
@@ -422,7 +422,7 @@ export default function App() {
           imageTimeout: 5000
         });
         const link = document.createElement('a');
-        link.download = `qraura-${Date.now()}.png`;
+        link.download = `qube-${Date.now()}.png`;
         link.href = canvas.toDataURL('image/png', format === 'low-png' ? 0.6 : 1.0);
         link.click();
       }
@@ -618,12 +618,20 @@ export default function App() {
       <header className="fixed top-0 w-full h-[60px] border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-black/80 backdrop-blur-md z-[1000]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 overflow-hidden border border-white/10">
-            <img src="/logo.png" alt="QR Aura" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <img src="/logo.png" alt="QUBE" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div className="flex flex-col">
             <LiquidMetalLogo className="text-lg font-black tracking-tighter leading-none">
-              QR Aura
+              QUBE
             </LiquidMetalLogo>
+            <motion.p
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.26em] text-slate-400"
+            >
+              No sign-up required · 100% free
+            </motion.p>
           </div>
         </div>
         <div className="flex items-center gap-2">

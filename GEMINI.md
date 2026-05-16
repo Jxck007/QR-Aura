@@ -1,4 +1,4 @@
-# QR Aura - Developer Instructions
+# QUBE - Developer Instructions
 
 ## Project Intent
 To create the most visually stunning and design-accurate QR code generator. The app should feel like a specialized creative tool rather than a generic utility.

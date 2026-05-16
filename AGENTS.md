@@ -1,6 +1,6 @@
-# QR Aura - Project Summary for AI Agent
+# QUBE - Project Summary for AI Agent
 
-QR Aura is a premium, high-end QR code generator built with React 18, Vite, and Tailwind CSS. It focuses on design accuracy, visual separation, and a "dark-first" aesthetic.
+QUBE is a premium, high-end QR code generator built with React 18, Vite, and Tailwind CSS. It focuses on design accuracy, visual separation, and a "dark-first" aesthetic.
 
 ## Core Architecture
 - **Framework**: React (using functional components and hooks).
